@@ -65,11 +65,10 @@ def mask_gaia_stars(mbobs, gaia_stars):
     ormask = obs0.ormask
     gaia_bmask = make_gaia_mask(
         gaia_stars,
-        ormask=ormask,
+        dims=ormask.shape,
         start_row=obs0.meta['orig_start_row'],
         start_col=obs0.meta['orig_start_col'],
     )
-    gaia_bmask = np.zeros(ormask.shape, dtype=np.int32)
 
     # now modify the masks, weight maps, and interpolate in all
     # bands
@@ -98,7 +97,7 @@ def mask_gaia_stars(mbobs, gaia_stars):
 
 def make_gaia_mask(
     gaia_stars,
-    ormask,
+    dims,
     start_row,
     start_col,
 ):
@@ -110,12 +109,9 @@ def make_gaia_mask(
     ----------
     gaia_stars: array
         The gaia star catalog
-    ormask: array
-        The ormask for the data.  Used to determine if the star in question was
-        saturated.  Only works if the center of the star is in the image.
-
-        We could fix this by having a reference ormask for the full area we are
-        slicing
+    dims: array
+        The shape of the image; this is all that is needed to determine
+        the masking
     start_row: int
         Row in original larger image frame corresponding to row=0
     start_col: int
@@ -127,13 +123,12 @@ def make_gaia_mask(
     y = gaia_stars['y'].astype('f8')
     radius_pixels = gaia_stars['radius_pixels'].astype('f8')
 
-    gaia_bmask = np.zeros(ormask.shape, dtype='i4')
+    gaia_bmask = np.zeros(dims, dtype='i4')
     do_mask_gaia_stars(
         rows=y - start_row,
         cols=x - start_col,
         radius_pixels=radius_pixels,
         bmask=gaia_bmask,
-        ormask=ormask,
         flag=BMASK_GAIA_STAR,
     )
 
@@ -176,7 +171,7 @@ def intersects(row, col, radius_pixels, nrows, ncols):
 
 
 @njit
-def do_mask_gaia_stars(rows, cols, radius_pixels, bmask, ormask, flag):
+def do_mask_gaia_stars(rows, cols, radius_pixels, bmask, flag):
     """
     low level code to mask stars
 
@@ -201,18 +196,6 @@ def do_mask_gaia_stars(rows, cols, radius_pixels, bmask, ormask, flag):
         col = cols[istar]
 
         rad = radius_pixels[istar]
-
-        rowi = int(row)
-        coli = int(col)
-
-        # 226
-        # 2**27
-        if (0 <= rowi < nrows and
-                0 <= coli < ncols and
-                ((ormask[rowi, coli] & 226) != 0)):
-
-            # SATURATE | STAR | TRAIL | EDGEBLEED
-            rad = rad * 1.5
 
         rad2 = rad * rad
 
