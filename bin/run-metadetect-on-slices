@@ -37,7 +37,8 @@ def _process(*,
     with open(config, 'r') as fp:
         _config = yaml.load(fp.read(), Loader=yaml.Loader)
 
-    _preconfig = _config.pop("pizza-cutter-preprocessing", None)
+    # required entry
+    _preconfig = _config.pop("pizza-cutter-preprocessing")
 
     logging.basicConfig(
         stream=sys.stdout, level=getattr(logging, log_level.upper()))
@@ -72,9 +73,9 @@ def _process(*,
             output_file=output_file,
             multiband_meds=mbmeds,
             seed=seed,
+            preconfig=_preconfig,
             start=start,
             num=num,
-            preconfig=_preconfig,
         )
 
     if output_path.endswith(".fits"):

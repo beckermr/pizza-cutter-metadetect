@@ -12,6 +12,7 @@ import fitsio
 from metadetect.metadetect import do_metadetect
 from pizza_cutter.slice_utils.pbar import PBar
 from pizza_cutter.files import expandpath
+from .gaia_stars import load_gaia_stars, mask_gaia_stars
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +218,12 @@ def _post_process_results(*, outputs, obj_data, image_info):
     return output, dt
 
 
-def _preprocess_for_metadetect(preconfig, mbobs, i, rng):
+def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
     logger.debug("preprocessing multiband obslist %d", i)
+
+    # we always mask stars
+    mask_gaia_stars(mbobs, gaia_stars)
+
     if preconfig is None:
         return mbobs
     else:
@@ -226,14 +231,14 @@ def _preprocess_for_metadetect(preconfig, mbobs, i, rng):
         return mbobs
 
 
-def _do_metadetect(config, mbobs, seed, i, preconfig):
+def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig):
     _t0 = time.time()
     res = None
     if mbobs is not None:
         minnum = min([len(olist) for olist in mbobs])
         if minnum > 0:
             rng = np.random.RandomState(seed=seed)
-            mbobs = _preprocess_for_metadetect(preconfig, mbobs, i, rng)
+            mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
             res = do_metadetect(config, mbobs, rng)
     return res, i, time.time() - _t0
 
@@ -274,9 +279,9 @@ def run_metadetect(
         multiband_meds,
         output_file,
         seed,
+        preconfig,
         start=0,
-        num=None,
-        preconfig=None):
+        num=None):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
 
@@ -288,14 +293,16 @@ def run_metadetect(
         A multiband MEDS data structure.
     output_file : str
         The file to which to write the outputs.
+    seed: int
+        Base seed for generating seeds
+    preconfig : dict
+        Proprocessing configuration.  Must contain gaia_star_masks
+        entry
     start : int, optional
         The first entry of the file to process. Defaults to zero.
     num : int, optional
         The number of entries of the file to process, starting at `start`.
         The default of `None` will process all entries in the file.
-    preconfig : dict or None, optional
-        The default of `None` does no preprocessing. Otherwise preprocessing is
-        done according to the config.
     """
     t0 = time.time()
 
@@ -310,11 +317,13 @@ def run_metadetect(
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
 
+    gaia_stars = load_gaia_stars(multiband_meds, preconfig['gaia_star_masks'])
+
     n_jobs = int(os.environ.get('OMP_NUM_THREADS', 1))
     if n_jobs == 1:
         outputs = [
             _do_metadetect(
-                config, mbobs, seed+i*256, i, preconfig)
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig)
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
         outputs = joblib.Parallel(
@@ -323,7 +332,9 @@ def run_metadetect(
             pre_dispatch='2*n_jobs',
             max_nbytes=None
         )(
-            joblib.delayed(_do_metadetect)(config, mbobs, seed+i*256, i, preconfig)
+            joblib.delayed(_do_metadetect)(
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig
+            )
             for i, mbobs in meds_iter()
         )
 
