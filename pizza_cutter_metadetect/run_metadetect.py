@@ -221,8 +221,8 @@ def _post_process_results(*, outputs, obj_data, image_info):
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
     logger.debug("preprocessing multiband obslist %d", i)
 
-    # we always mask stars
-    mask_gaia_stars(mbobs, gaia_stars)
+    if gaia_stars is not None:
+        mask_gaia_stars(mbobs, gaia_stars)
 
     if preconfig is None:
         return mbobs
@@ -273,6 +273,19 @@ def _make_meds_iterator(mbmeds, start, num):
     return _func
 
 
+def _load_gaia_stars(mbmeds, preconfig):
+    if 'gaia_star_masks' in preconfig:
+        gaia_config = preconfig['gaia_star_masks']
+        gaia_stars = load_gaia_stars(
+            mbmeds=mbmeds,
+            poly_coeffs=gaia_config['poly_coeffs'],
+            max_g_mag=gaia_config['max_g_mag'],
+        )
+    else:
+        gaia_stars = None
+    return gaia_stars
+
+
 def run_metadetect(
         *,
         config,
@@ -317,12 +330,7 @@ def run_metadetect(
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
 
-    gaia_config = preconfig['gaia_star_masks']
-    gaia_stars = load_gaia_stars(
-        mbmeds=multiband_meds,
-        poly_coeffs=gaia_config['poly_coeffs'],
-        max_g_mag=gaia_config['max_g_mag'],
-    )
+    gaia_stars = _load_gaia_stars(mbmeds=multiband_meds, preconfig=preconfig)
 
     n_jobs = int(os.environ.get('OMP_NUM_THREADS', 1))
     if n_jobs == 1:
