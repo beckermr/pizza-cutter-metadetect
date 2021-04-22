@@ -317,7 +317,12 @@ def run_metadetect(
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
 
-    gaia_stars = load_gaia_stars(multiband_meds, preconfig['gaia_star_masks'])
+    gaia_config = preconfig['gaia_star_masks']
+    gaia_stars = load_gaia_stars(
+        mbmeds=multiband_meds,
+        poly_coeffs=gaia_config['poly_coeffs'],
+        max_g_mag=gaia_config['max_g_mag'],
+    )
 
     n_jobs = int(os.environ.get('OMP_NUM_THREADS', 1))
     if n_jobs == 1:
