@@ -309,8 +309,8 @@ def run_metadetect(
     seed: int
         Base seed for generating seeds
     preconfig : dict
-        Proprocessing configuration.  Must contain gaia_star_masks
-        entry
+        Proprocessing configuration.  May contain gaia_star_masks
+        entry.
     start : int, optional
         The first entry of the file to process. Defaults to zero.
     num : int, optional
