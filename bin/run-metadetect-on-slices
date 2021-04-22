@@ -37,7 +37,7 @@ def _process(*,
     with open(config, 'r') as fp:
         _config = yaml.load(fp.read(), Loader=yaml.Loader)
 
-    _preconfig = _config.pop("pizza-cutter-preprocessing")
+    _preconfig = _config.pop("pizza-cutter-preprocessing", {})
 
     logging.basicConfig(
         stream=sys.stdout, level=getattr(logging, log_level.upper()))
