@@ -4,6 +4,7 @@ import time
 import datetime
 import logging
 
+import yaml
 import joblib
 import numpy as np
 import esutil as eu
@@ -14,7 +15,7 @@ from pizza_cutter.slice_utils.pbar import PBar
 from pizza_cutter.files import expandpath
 from .gaia_stars import load_gaia_stars, mask_gaia_stars
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def split_range(meds_range):
@@ -36,12 +37,16 @@ def split_range(meds_range):
     return start, end_plus_one, num
 
 
-def make_output_filename(directory, meds_fname, part, meds_range):
+def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     """
     make the output name
 
     Parameters
     ----------
+    directory: str
+        The directory for the outputs.
+    config_fname: str
+        The config file name.
     meds_fname: str
         Example meds file name
     part: int
@@ -53,8 +58,9 @@ def make_output_filename(directory, meds_fname, part, meds_range):
     -------
     file basename
     """
-
-    run = os.path.basename(directory)
+    mdetrun = os.path.basename(config_fname)
+    if mdetrun.endswith(".yaml") or mdetrun.endswith(".yml"):
+        mdetrun = mdetrun.rsplit(".", 1)[0]
 
     fname = os.path.basename(meds_fname)
     fname = fname.replace('.fz', '').replace('.fits', '')
@@ -62,7 +68,7 @@ def make_output_filename(directory, meds_fname, part, meds_range):
     items = fname.split('_')
     # keep real DES data names short. By convention, the first part
     # is the tilename
-    parts = [run, items[0]]
+    parts = [items[0], mdetrun, "mdetcat"]
 
     if part is None and meds_range is None:
         part = 0
@@ -73,11 +79,11 @@ def make_output_filename(directory, meds_fname, part, meds_range):
         start, end_plus_one, num = split_range(meds_range)
         end = end_plus_one - 1
 
-        tail = '%04d-%04d.fits' % (start, end)
+        tail = 'range%04d-%04d.fits' % (start, end)
 
     parts.append(tail)
 
-    fname = '-'.join(parts)
+    fname = '_'.join(parts)
 
     fname = os.path.join(directory, fname)
     fname = expandpath(fname)
@@ -85,9 +91,11 @@ def make_output_filename(directory, meds_fname, part, meds_range):
 
 
 def _make_output_array(
-        *,
-        data, slice_id, mcal_step,
-        orig_start_row, orig_start_col, position_offset, wcs):
+    *,
+    data, slice_id, mcal_step,
+    orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
+    central_size,
+):
     """
     Add columns to the output data array. These include the slice id, metacal
     step (e.g. '1p'), ra, dec in the sheared coordinates as well as unsheared
@@ -109,6 +117,10 @@ def _make_output_array(
         Often 1 for wcs
     wcs: world coordinate system object
         wcs for converting image positions to sky positions
+    buffer_size: float
+        The size of the buffer region to cut for each slice.
+    central_size: float
+        The size of the central region.
 
     Returns
     -------
@@ -143,6 +155,15 @@ def _make_output_array(
         wcs=wcs,
     )
 
+    min_sx = buffer_size
+    max_sx = central_size + buffer_size
+    msk = (
+        (arr['sx_row_noshear'] >= min_sx)
+        & (arr['sx_row_noshear'] < max_sx)
+        & (arr['sx_col_noshear'] >= min_sx)
+        & (arr['sx_col_noshear'] < max_sx)
+    )
+    arr = arr[msk]
     return arr
 
 
@@ -182,7 +203,9 @@ def _get_radec(*,
     return ra, dec
 
 
-def _post_process_results(*, outputs, obj_data, image_info):
+def _post_process_results(
+    *, outputs, obj_data, image_info, buffer_size, central_size
+):
     # post process results
     wcs_cache = {}
 
@@ -210,7 +233,10 @@ def _post_process_results(*, outputs, obj_data, image_info):
                     orig_start_col=obj_data['orig_start_col'][i, 0],
                     orig_start_row=obj_data['orig_start_row'][i, 0],
                     wcs=wcs,
-                    position_offset=position_offset))
+                    position_offset=position_offset,
+                    buffer_size=buffer_size,
+                    central_size=central_size,
+                ))
 
     # concatenate once since generally more efficient
     output = np.concatenate(output)
@@ -219,10 +245,10 @@ def _post_process_results(*, outputs, obj_data, image_info):
 
 
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
-    logger.debug("preprocessing multiband obslist %d", i)
+    LOGGER.debug("preprocessing multiband obslist %d", i)
 
     if gaia_stars is not None:
-        mask_gaia_stars(mbobs, gaia_stars)
+        mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'])
 
     if preconfig is None:
         return mbobs
@@ -287,14 +313,16 @@ def _load_gaia_stars(mbmeds, preconfig):
 
 
 def run_metadetect(
-        *,
-        config,
-        multiband_meds,
-        output_file,
-        seed,
-        preconfig,
-        start=0,
-        num=None):
+    *,
+    config,
+    multiband_meds,
+    output_file,
+    seed,
+    preconfig,
+    start=0,
+    num=None,
+    n_jobs=1,
+):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
 
@@ -316,6 +344,8 @@ def run_metadetect(
     num : int, optional
         The number of entries of the file to process, starting at `start`.
         The default of `None` will process all entries in the file.
+    n_jobs : int
+        The number of jobs to use.
     """
     t0 = time.time()
 
@@ -332,7 +362,6 @@ def run_metadetect(
 
     gaia_stars = _load_gaia_stars(mbmeds=multiband_meds, preconfig=preconfig)
 
-    n_jobs = int(os.environ.get('OMP_NUM_THREADS', 1))
     if n_jobs == 1:
         outputs = [
             _do_metadetect(
@@ -341,7 +370,7 @@ def run_metadetect(
     else:
         outputs = joblib.Parallel(
             verbose=100,
-            n_jobs=int(os.environ.get('OMP_NUM_THREADS', 1)),
+            n_jobs=n_jobs,
             pre_dispatch='2*n_jobs',
             max_nbytes=None
         )(
@@ -352,10 +381,15 @@ def run_metadetect(
         )
 
     # join all the outputs
+    meta = multiband_meds.mlist[0].get_meta()
+    pz_config = yaml.safe_load(meta['config'][0])
     output, cpu_time = _post_process_results(
         outputs=outputs,
         obj_data=multiband_meds.mlist[0].get_cat(),
-        image_info=multiband_meds.mlist[0].get_image_info())
+        image_info=multiband_meds.mlist[0].get_image_info(),
+        buffer_size=pz_config['coadd']['buffer_size'],
+        central_size=pz_config['coadd']['central_size'],
+    )
 
     # report and do i/o
     wall_time = time.time() - t0

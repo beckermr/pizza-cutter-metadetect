@@ -39,8 +39,14 @@ sx:
 weight:
   fwhm: 1.2  # arcsec
 
-# check for hitting the edge
-bmask_flags: 1610612736  # 2**29 | 2**30
+# any regions where the bmask is set with one of these flags will be masked
+# out of detection
+maskflags: 33554432  # 2**25 is GAIA stars
+
+# check for hitting the edge when fitting
+bmask_flags: 1610612736  # 2**29 | 2**30 edge in either MEDS of pizza cutter
+
+mfrac_fwhm: 1.2  # arcsec
 
 meds:
   box_padding: 2
@@ -54,3 +60,4 @@ pizza-cutter-preprocessing:
     gaia_star_masks:
         poly_coeffs: [ 1.36055007e-03, -1.55098040e-01,  3.46641671e+00]
         max_g_mag: 18.0
+        symmetrize: True

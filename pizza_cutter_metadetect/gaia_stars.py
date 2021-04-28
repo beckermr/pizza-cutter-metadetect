@@ -21,14 +21,12 @@ def load_gaia_stars(
     poly_coeffs: tuple
         Tuple describing a np.poly1d for log10(radius) vs mag.
         E.g. (0.00443223, -0.22569131, 2.99642999)
-
-        Note it must be a tuple in order for the cacheing to work
     max_g_mag: float, optional
         Maximum g mag to mask.  Default 18
     """
 
     # gaia stars are same in all bands for a given tile, just read one
-    gaia_stars = mbmeds.meds[0]._fits.read(GAIA_STARS_EXTNAME)
+    gaia_stars = mbmeds.mlist[0]._fits[GAIA_STARS_EXTNAME].read()
 
     w, = np.where(gaia_stars['phot_g_mean_mag'] <= max_g_mag)
     gaia_stars = gaia_stars[w]
@@ -47,17 +45,19 @@ def load_gaia_stars(
     return gaia_stars
 
 
-def mask_gaia_stars(mbobs, gaia_stars):
+def mask_gaia_stars(mbobs, gaia_stars, config):
     """
     mask gaia stars, setting a bit in the bmask, interpolating image and noise,
     setting weight to zero, and setting mfrac=1
 
     Parameters
     ----------
-    gaia_stars: array
-        The gaia star catalog
     mbobs: ngmix.MultiBandObsList
         The observations to mask
+    gaia_stars: array
+        The gaia star catalog.
+    config: dict
+        A dictionary of config parameters.
     """
 
     # masking is same for all, just take the first
@@ -68,6 +68,7 @@ def mask_gaia_stars(mbobs, gaia_stars):
         dims=ormask.shape,
         start_row=obs0.meta['orig_start_row'],
         start_col=obs0.meta['orig_start_col'],
+        symmetrize=config['symmetrize'],
     )
 
     # now modify the masks, weight maps, and interpolate in all
@@ -82,7 +83,7 @@ def mask_gaia_stars(mbobs, gaia_stars):
                 with obs.writeable():
                     obs.bmask |= gaia_bmask
 
-                    # obs.mfrac[wbad] = 1.0
+                    obs.mfrac[wbad] = 1.0
                     obs.weight[wbad] = 0.0
 
                     interp_image = _grid_interp(
@@ -100,6 +101,7 @@ def make_gaia_mask(
     dims,
     start_row,
     start_col,
+    symmetrize,
 ):
     """
     mask gaia stars, setting a bit in the bmask, interpolating image and noise,
@@ -116,6 +118,8 @@ def make_gaia_mask(
         Row in original larger image frame corresponding to row=0
     start_col: int
         Column in original larger image frame corresponding to col=0
+    symmetrize: bool
+        If True, symmetrize the mask.
     """
 
     # must be native byte order for numba
@@ -132,7 +136,9 @@ def make_gaia_mask(
         flag=BMASK_GAIA_STAR,
     )
 
-    symmetrize_bmask(bmask=gaia_bmask)
+    if symmetrize:
+        symmetrize_bmask(bmask=gaia_bmask)
+
     return gaia_bmask
 
 
@@ -196,14 +202,11 @@ def do_mask_gaia_stars(rows, cols, radius_pixels, bmask, flag):
         col = cols[istar]
 
         rad = radius_pixels[istar]
-
         rad2 = rad * rad
 
-        # put into local frame for check
         if not intersects(row, col, rad, nrows, ncols):
             continue
 
-        # these dont in global frame
         for irow in range(nrows):
             rowdiff2 = (row - irow)**2
             for icol in range(ncols):
