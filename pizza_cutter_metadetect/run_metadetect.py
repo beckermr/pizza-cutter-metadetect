@@ -128,7 +128,7 @@ def _make_output_array(
     """
     add_dt = [
         ('slice_id', 'i8'),
-        ('mcal_step', 'S7'),
+        ('mcal_step', 'U7'),
         ('ra', 'f8'),
         ('dec', 'f8'),
         ('ra_det', 'f8'),
@@ -137,26 +137,48 @@ def _make_output_array(
         ('col_det', 'f8'),
         ('row', 'f8'),
         ('col', 'f8'),
+        ('slice_row', 'f8'),
+        ('slice_col', 'f8'),
+        ('slice_row_det', 'f8'),
+        ('slice_col_det', 'f8'),
     ]
-    arr = eu.numpy_util.add_fields(data, add_dt)
+    skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
+    for fld in data.dtype.descr:
+        if fld[0] in skip_cols:
+            continue
+        add_dt += [fld]
+
+    arr = np.zeros(data.shape, dtype=add_dt)
+    for name in data.dtype.names:
+        if name in arr.dtype.names:
+            arr[name] = data[name]
+
     arr['slice_id'] = slice_id
     arr['mcal_step'] = mcal_step
-    arr['row'] = orig_start_row + arr['sx_row']
-    arr['col'] = orig_start_col + arr['sx_col']
-    arr['row_det'] = orig_start_row + arr['sx_row_det']
-    arr['col_det'] = orig_start_col + arr['sx_col_det']
+
+    # we swap names here calling the sheared pos _det
+    arr['slice_row'] = data['sx_row_noshear']
+    arr['slice_col'] = data['sx_col_noshear']
+    arr['slice_row_det'] = data['sx_row']
+    arr['slice_col_det'] = data['sx_col']
+
+    # these are in global coadd coords
+    arr['row'] = orig_start_row + data['sx_row_noshear']
+    arr['col'] = orig_start_col + data['sx_col_noshear']
+    arr['row_det'] = orig_start_row + data['sx_row']
+    arr['col_det'] = orig_start_col + data['sx_col']
 
     arr['ra'], arr['dec'] = _get_radec(
-        row=arr['sx_row'],
-        col=arr['sx_col'],
+        row=arr['slice_row'],
+        col=arr['slice_col'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
     )
     arr['ra_det'], arr['dec_det'] = _get_radec(
-        row=arr['sx_row_det'],
-        col=arr['sx_col_det'],
+        row=arr['slice_row_det'],
+        col=arr['slice_col_det'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
@@ -166,10 +188,10 @@ def _make_output_array(
     min_sx = buffer_size
     max_sx = central_size + buffer_size
     msk = (
-        (arr['sx_row'] >= min_sx)
-        & (arr['sx_row'] < max_sx)
-        & (arr['sx_col'] >= min_sx)
-        & (arr['sx_col'] < max_sx)
+        (arr['slice_row'] >= min_sx)
+        & (arr['slice_row'] < max_sx)
+        & (arr['slice_col'] >= min_sx)
+        & (arr['slice_col'] < max_sx)
     )
     arr = arr[msk]
     return arr
