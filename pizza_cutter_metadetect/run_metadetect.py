@@ -131,12 +131,20 @@ def _make_output_array(
         ('mcal_step', 'S7'),
         ('ra', 'f8'),
         ('dec', 'f8'),
-        ('ra_noshear', 'f8'),
-        ('dec_noshear', 'f8'),
+        ('ra_det', 'f8'),
+        ('dec_det', 'f8'),
+        ('row_det', 'f8'),
+        ('col_det', 'f8'),
+        ('row', 'f8'),
+        ('col', 'f8'),
     ]
     arr = eu.numpy_util.add_fields(data, add_dt)
     arr['slice_id'] = slice_id
     arr['mcal_step'] = mcal_step
+    arr['row'] = orig_start_row + arr['sx_row']
+    arr['col'] = orig_start_col + arr['sx_col']
+    arr['row_det'] = orig_start_row + arr['sx_row_det']
+    arr['col_det'] = orig_start_col + arr['sx_col_det']
 
     arr['ra'], arr['dec'] = _get_radec(
         row=arr['sx_row'],
@@ -146,9 +154,9 @@ def _make_output_array(
         position_offset=position_offset,
         wcs=wcs,
     )
-    arr['ra_noshear'], arr['dec_noshear'] = _get_radec(
-        row=arr['sx_row_noshear'],
-        col=arr['sx_col_noshear'],
+    arr['ra_det'], arr['dec_det'] = _get_radec(
+        row=arr['sx_row_det'],
+        col=arr['sx_col_det'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
@@ -158,10 +166,10 @@ def _make_output_array(
     min_sx = buffer_size
     max_sx = central_size + buffer_size
     msk = (
-        (arr['sx_row_noshear'] >= min_sx)
-        & (arr['sx_row_noshear'] < max_sx)
-        & (arr['sx_col_noshear'] >= min_sx)
-        & (arr['sx_col_noshear'] < max_sx)
+        (arr['sx_row'] >= min_sx)
+        & (arr['sx_row'] < max_sx)
+        & (arr['sx_col'] >= min_sx)
+        & (arr['sx_col'] < max_sx)
     )
     arr = arr[msk]
     return arr
@@ -245,7 +253,7 @@ def _post_process_results(
 
 
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
-    LOGGER.debug("preprocessing multiband obslist %d", i)
+    LOGGER.debug("preprocessing entry %d", i)
 
     if gaia_stars is not None:
         mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'])
@@ -258,6 +266,7 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
 
 
 def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig):
+    LOGGER.debug("running mdet for entry %d", i)
     _t0 = time.time()
     res = None
     if mbobs is not None:
@@ -294,6 +303,7 @@ def _make_meds_iterator(mbmeds, start, num):
     def _func():
         for i in range(start, start+num):
             mbobs = mbmeds.get_mbobs(i)
+            LOGGER.debug("read meds entry %d", i)
             yield i, mbobs
 
     return _func
@@ -372,7 +382,6 @@ def run_metadetect(
             verbose=100,
             n_jobs=n_jobs,
             pre_dispatch='2*n_jobs',
-            max_nbytes=None
         )(
             joblib.delayed(_do_metadetect)(
                 config, mbobs, gaia_stars, seed+i*256, i, preconfig
@@ -394,11 +403,19 @@ def run_metadetect(
     # report and do i/o
     wall_time = time.time() - t0
     print(
-        "run time: ",
+        "run time:",
         str(datetime.timedelta(seconds=int(wall_time))),
-        flush=True)
+        flush=True,
+    )
     print(
-        "CPU seconds per slice: ",
-        cpu_time / len(outputs), flush=True)
+        "CPU time:",
+        str(datetime.timedelta(seconds=int(cpu_time))),
+        flush=True,
+    )
+    print(
+        "CPU seconds per slice:",
+        cpu_time / num,
+        flush=True,
+    )
 
     fitsio.write(output_file, output, clobber=True)

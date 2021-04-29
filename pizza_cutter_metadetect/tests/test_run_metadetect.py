@@ -30,16 +30,17 @@ def test_make_output_array():
     dtype = [
         ('sx_row', 'f8'),
         ('sx_col', 'f8'),
-        ('sx_row_noshear', 'f8'),
-        ('sx_col_noshear', 'f8'),
-        ('a', 'f8'),
+        ('sx_row_det', 'f8'),
+        ('sx_col_det', 'f8'),
+        ('a', 'i8'),
     ]
     data = np.zeros(10, dtype=dtype)
 
     data['sx_row'] = np.arange(10) + 324
-    data['sx_col'] = np.arange(10) + 3
-    data['sx_row_noshear'] = np.arange(10) + 324
-    data['sx_col_noshear'] = np.arange(10) + 3
+    data['sx_col'] = np.arange(10) + 326
+    data['sx_row_det'] = np.arange(10) + 325
+    data['sx_col_det'] = np.arange(10) + 327
+    data['a'] = np.arange(10)
 
     arr = _make_output_array(
         data=data,
@@ -48,20 +49,32 @@ def test_make_output_array():
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
-        wcs=wcs)
+        wcs=wcs,
+        buffer_size=328,
+        central_size=5,
+    )
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mcal_step'] == mcal_step)
+
+    msk = (
+        (data['sx_row'] >= 328)
+        & (data['sx_row'] < 333)
+        & (data['sx_col'] >= 328)
+        & (data['sx_col'] < 333)
+    )
+
+    assert np.array_equal(arr['a'], data['a'][msk])
 
     ra, dec = wcs.image2sky(
         x=data['sx_col'] + orig_start_col + position_offset,
         y=data['sx_row'] + orig_start_row + position_offset,
     )
     ura, udec = wcs.image2sky(
-        x=data['sx_col_noshear'] + orig_start_col + position_offset,
-        y=data['sx_row_noshear'] + orig_start_row + position_offset,
+        x=data['sx_col_det'] + orig_start_col + position_offset,
+        y=data['sx_row_det'] + orig_start_row + position_offset,
     )
-    assert np.all(arr['ra'] == ra)
-    assert np.all(arr['dec'] == dec)
-    assert np.all(arr['ra_noshear'] == ura)
-    assert np.all(arr['dec_noshear'] == udec)
+    assert np.all(arr['ra'] == ra[msk])
+    assert np.all(arr['dec'] == dec[msk])
+    assert np.all(arr['ra_det'] == ura[msk])
+    assert np.all(arr['dec_det'] == udec[msk])
