@@ -1,7 +1,9 @@
 from numba import njit
 import numpy as np
 import esutil as eu
-from pizza_cutter.des_pizza_cutter import GAIA_STARS_EXTNAME, BMASK_GAIA_STAR
+from pizza_cutter.des_pizza_cutter import (
+    GAIA_STARS_EXTNAME, BMASK_GAIA_STAR, BMASK_SPLINE_INTERP,
+)
 from pizza_cutter.slice_utils.symmetrize import symmetrize_bmask
 from pizza_cutter.slice_utils.interpolate import _grid_interp
 
@@ -35,11 +37,7 @@ def load_gaia_stars(
     gaia_stars = eu.numpy_util.add_fields(gaia_stars, add_dt)
 
     ply = np.poly1d(poly_coeffs)
-
-    # these do not have a radius factor in them
     log10_radius_pixels = ply(gaia_stars['phot_g_mean_mag'])
-
-    # convert to  linear and multiply by radius factor
     gaia_stars['radius_pixels'] = 10.0**log10_radius_pixels
 
     return gaia_stars
@@ -94,6 +92,7 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
                     )
                     obs.image = interp_image
                     obs.noise = interp_noise
+                    obs.bmask[wbad] |= BMASK_SPLINE_INTERP
 
 
 def make_gaia_mask(
@@ -186,13 +185,13 @@ def do_mask_gaia_stars(rows, cols, radius_pixels, bmask, flag):
     rows, cols: arrays
         Arrays of rows/cols of star locations in the "local" pixel frame of the
         slice, not the overall pixels of the big coadd. These positions may be
-        off the image
-    radius_pixels: float
-        The radius for each star mask
+        off the image.
+    radius_pixels: array
+        The radius for each star mask.
     bmask: array
-        The bmask to modify
+        The bmask to modify.
     flag: int
-        The flag value to "or" into the bmask
+        The flag value to "or" into the bmask.
     """
     nrows, ncols = bmask.shape
     nmasked = 0
