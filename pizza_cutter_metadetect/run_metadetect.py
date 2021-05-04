@@ -9,6 +9,7 @@ import joblib
 import numpy as np
 import esutil as eu
 import fitsio
+import ngmix
 
 from metadetect.metadetect import do_metadetect
 from pizza_cutter.slice_utils.pbar import PBar
@@ -287,7 +288,7 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
         return mbobs
 
 
-def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig):
+def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
     LOGGER.debug("running mdet for entry %d", i)
     _t0 = time.time()
     res = None
@@ -296,7 +297,19 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig):
         if minnum > 0:
             rng = np.random.RandomState(seed=seed)
             mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
-            res = do_metadetect(config, mbobs, rng)
+
+            shear_mbobs = ngmix.MultiBandObsList()
+            nonshear_mbobs = ngmix.MultiBandObsList()
+            for obslist, is_shear_band in zip(mbobs, shear_bands):
+                if is_shear_band:
+                    shear_mbobs.append(obslist)
+                else:
+                    nonshear_mbobs.append(obslist)
+
+            if len(nonshear_mbobs) == 0:
+                nonshear_mbobs = None
+
+            res = do_metadetect(config, shear_mbobs, rng, nonshear_mbobs=nonshear_mbobs)
     return res, i, time.time() - _t0
 
 
@@ -354,6 +367,7 @@ def run_metadetect(
     start=0,
     num=None,
     n_jobs=1,
+    shear_bands=None,
 ):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
@@ -378,6 +392,10 @@ def run_metadetect(
         The default of `None` will process all entries in the file.
     n_jobs : int
         The number of jobs to use.
+    shear_bands : list of bool or None
+        If not None, this is a list of boolean values indicating if a given
+        band is to be used for shear. The length must match the number of MEDS
+        files used to make the `multiband_meds`.
     """
     t0 = time.time()
 
@@ -388,6 +406,15 @@ def run_metadetect(
     if num + start > multiband_meds.size:
         num = multiband_meds.size - start
 
+    if shear_bands is None:
+        shear_bands = [True] * len(multiband_meds.mlist)
+
+    if not any(shear_bands):
+        raise RuntimeError(
+            "You must have at least one band marked to be "
+            "used for shear in `shear_bands`!"
+        )
+
     print('# of slices: %d' % num, flush=True)
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
@@ -397,7 +424,7 @@ def run_metadetect(
     if n_jobs == 1:
         outputs = [
             _do_metadetect(
-                config, mbobs, gaia_stars, seed+i*256, i, preconfig)
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands)
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
         outputs = joblib.Parallel(
@@ -406,7 +433,7 @@ def run_metadetect(
             pre_dispatch='2*n_jobs',
         )(
             joblib.delayed(_do_metadetect)(
-                config, mbobs, gaia_stars, seed+i*256, i, preconfig
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands,
             )
             for i, mbobs in meds_iter()
         )
