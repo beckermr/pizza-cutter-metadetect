@@ -25,21 +25,22 @@ def test_make_output_array():
     orig_start_col = 10
     orig_start_row = 20
     slice_id = 11
-    mcal_step = b'blah'
+    mcal_step = 'blah'
 
     dtype = [
         ('sx_row', 'f8'),
         ('sx_col', 'f8'),
         ('sx_row_noshear', 'f8'),
         ('sx_col_noshear', 'f8'),
-        ('a', 'f8'),
+        ('a', 'i8'),
     ]
     data = np.zeros(10, dtype=dtype)
 
     data['sx_row'] = np.arange(10) + 324
-    data['sx_col'] = np.arange(10) + 3
-    data['sx_row_noshear'] = np.arange(10) + 324
-    data['sx_col_noshear'] = np.arange(10) + 3
+    data['sx_col'] = np.arange(10) + 326
+    data['sx_row_noshear'] = np.arange(10) + 325
+    data['sx_col_noshear'] = np.arange(10) + 327
+    data['a'] = np.arange(10)
 
     arr = _make_output_array(
         data=data,
@@ -48,20 +49,42 @@ def test_make_output_array():
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
-        wcs=wcs)
+        wcs=wcs,
+        buffer_size=328,
+        central_size=5,
+    )
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mcal_step'] == mcal_step)
 
-    ra, dec = wcs.image2sky(
-        x=data['sx_col'] + orig_start_col + position_offset,
-        y=data['sx_row'] + orig_start_row + position_offset,
+    msk = (
+        (data['sx_row_noshear'] >= 328)
+        & (data['sx_row_noshear'] < 333)
+        & (data['sx_col_noshear'] >= 328)
+        & (data['sx_col_noshear'] < 333)
     )
-    ura, udec = wcs.image2sky(
+
+    assert np.array_equal(arr['a'], data['a'][msk])
+
+    ra, dec = wcs.image2sky(
         x=data['sx_col_noshear'] + orig_start_col + position_offset,
         y=data['sx_row_noshear'] + orig_start_row + position_offset,
     )
-    assert np.all(arr['ra'] == ra)
-    assert np.all(arr['dec'] == dec)
-    assert np.all(arr['ra_noshear'] == ura)
-    assert np.all(arr['dec_noshear'] == udec)
+    ura, udec = wcs.image2sky(
+        x=data['sx_col'] + orig_start_col + position_offset,
+        y=data['sx_row'] + orig_start_row + position_offset,
+    )
+    assert np.all(arr['ra'] == ra[msk])
+    assert np.all(arr['dec'] == dec[msk])
+    assert np.all(arr['ra_det'] == ura[msk])
+    assert np.all(arr['dec_det'] == udec[msk])
+
+    assert np.all(arr['slice_row_det'] == data['sx_row'][msk])
+    assert np.all(arr['slice_col_det'] == data['sx_col'][msk])
+    assert np.all(arr['slice_row'] == data['sx_row_noshear'][msk])
+    assert np.all(arr['slice_col'] == data['sx_col_noshear'][msk])
+
+    assert 'sx_row_noshear' not in arr.dtype.names
+    assert 'sx_col_noshear' not in arr.dtype.names
+    assert 'sx_row' not in arr.dtype.names
+    assert 'sx_col' not in arr.dtype.names

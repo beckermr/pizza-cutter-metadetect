@@ -4,16 +4,19 @@ import time
 import datetime
 import logging
 
+import yaml
 import joblib
 import numpy as np
 import esutil as eu
 import fitsio
+import ngmix
 
 from metadetect.metadetect import do_metadetect
 from pizza_cutter.slice_utils.pbar import PBar
 from pizza_cutter.files import expandpath
+from .gaia_stars import load_gaia_stars, mask_gaia_stars
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def split_range(meds_range):
@@ -35,12 +38,16 @@ def split_range(meds_range):
     return start, end_plus_one, num
 
 
-def make_output_filename(directory, meds_fname, part, meds_range):
+def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     """
     make the output name
 
     Parameters
     ----------
+    directory: str
+        The directory for the outputs.
+    config_fname: str
+        The config file name.
     meds_fname: str
         Example meds file name
     part: int
@@ -52,8 +59,9 @@ def make_output_filename(directory, meds_fname, part, meds_range):
     -------
     file basename
     """
-
-    run = os.path.basename(directory)
+    mdetrun = os.path.basename(config_fname)
+    if mdetrun.endswith(".yaml") or mdetrun.endswith(".yml"):
+        mdetrun = mdetrun.rsplit(".", 1)[0]
 
     fname = os.path.basename(meds_fname)
     fname = fname.replace('.fz', '').replace('.fits', '')
@@ -61,7 +69,7 @@ def make_output_filename(directory, meds_fname, part, meds_range):
     items = fname.split('_')
     # keep real DES data names short. By convention, the first part
     # is the tilename
-    parts = [run, items[0]]
+    parts = [items[0], mdetrun, "mdetcat"]
 
     if part is None and meds_range is None:
         part = 0
@@ -72,11 +80,11 @@ def make_output_filename(directory, meds_fname, part, meds_range):
         start, end_plus_one, num = split_range(meds_range)
         end = end_plus_one - 1
 
-        tail = '%04d-%04d.fits' % (start, end)
+        tail = 'range%04d-%04d.fits' % (start, end)
 
     parts.append(tail)
 
-    fname = '-'.join(parts)
+    fname = '_'.join(parts)
 
     fname = os.path.join(directory, fname)
     fname = expandpath(fname)
@@ -84,9 +92,11 @@ def make_output_filename(directory, meds_fname, part, meds_range):
 
 
 def _make_output_array(
-        *,
-        data, slice_id, mcal_step,
-        orig_start_row, orig_start_col, position_offset, wcs):
+    *,
+    data, slice_id, mcal_step,
+    orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
+    central_size,
+):
     """
     Add columns to the output data array. These include the slice id, metacal
     step (e.g. '1p'), ra, dec in the sheared coordinates as well as unsheared
@@ -108,6 +118,10 @@ def _make_output_array(
         Often 1 for wcs
     wcs: world coordinate system object
         wcs for converting image positions to sky positions
+    buffer_size: float
+        The size of the buffer region to cut for each slice.
+    central_size: float
+        The size of the central region.
 
     Returns
     -------
@@ -115,33 +129,72 @@ def _make_output_array(
     """
     add_dt = [
         ('slice_id', 'i8'),
-        ('mcal_step', 'S7'),
+        ('mcal_step', 'U7'),
         ('ra', 'f8'),
         ('dec', 'f8'),
-        ('ra_noshear', 'f8'),
-        ('dec_noshear', 'f8'),
+        ('ra_det', 'f8'),
+        ('dec_det', 'f8'),
+        ('row_det', 'f8'),
+        ('col_det', 'f8'),
+        ('row', 'f8'),
+        ('col', 'f8'),
+        ('slice_row', 'f8'),
+        ('slice_col', 'f8'),
+        ('slice_row_det', 'f8'),
+        ('slice_col_det', 'f8'),
     ]
-    arr = eu.numpy_util.add_fields(data, add_dt)
+    skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
+    for fld in data.dtype.descr:
+        if fld[0] in skip_cols:
+            continue
+        add_dt += [fld]
+
+    arr = np.zeros(data.shape, dtype=add_dt)
+    for name in data.dtype.names:
+        if name in arr.dtype.names:
+            arr[name] = data[name]
+
     arr['slice_id'] = slice_id
     arr['mcal_step'] = mcal_step
 
+    # we swap names here calling the sheared pos _det
+    arr['slice_row'] = data['sx_row_noshear']
+    arr['slice_col'] = data['sx_col_noshear']
+    arr['slice_row_det'] = data['sx_row']
+    arr['slice_col_det'] = data['sx_col']
+
+    # these are in global coadd coords
+    arr['row'] = orig_start_row + data['sx_row_noshear']
+    arr['col'] = orig_start_col + data['sx_col_noshear']
+    arr['row_det'] = orig_start_row + data['sx_row']
+    arr['col_det'] = orig_start_col + data['sx_col']
+
     arr['ra'], arr['dec'] = _get_radec(
-        row=arr['sx_row'],
-        col=arr['sx_col'],
+        row=arr['slice_row'],
+        col=arr['slice_col'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
     )
-    arr['ra_noshear'], arr['dec_noshear'] = _get_radec(
-        row=arr['sx_row_noshear'],
-        col=arr['sx_col_noshear'],
+    arr['ra_det'], arr['dec_det'] = _get_radec(
+        row=arr['slice_row_det'],
+        col=arr['slice_col_det'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
     )
 
+    min_sx = buffer_size
+    max_sx = central_size + buffer_size
+    msk = (
+        (arr['slice_row'] >= min_sx)
+        & (arr['slice_row'] < max_sx)
+        & (arr['slice_col'] >= min_sx)
+        & (arr['slice_col'] < max_sx)
+    )
+    arr = arr[msk]
     return arr
 
 
@@ -181,7 +234,9 @@ def _get_radec(*,
     return ra, dec
 
 
-def _post_process_results(*, outputs, obj_data, image_info):
+def _post_process_results(
+    *, outputs, obj_data, image_info, buffer_size, central_size
+):
     # post process results
     wcs_cache = {}
 
@@ -209,7 +264,10 @@ def _post_process_results(*, outputs, obj_data, image_info):
                     orig_start_col=obj_data['orig_start_col'][i, 0],
                     orig_start_row=obj_data['orig_start_row'][i, 0],
                     wcs=wcs,
-                    position_offset=position_offset))
+                    position_offset=position_offset,
+                    buffer_size=buffer_size,
+                    central_size=central_size,
+                ))
 
     # concatenate once since generally more efficient
     output = np.concatenate(output)
@@ -217,8 +275,12 @@ def _post_process_results(*, outputs, obj_data, image_info):
     return output, dt
 
 
-def _preprocess_for_metadetect(preconfig, mbobs, i, rng):
-    logger.debug("preprocessing multiband obslist %d", i)
+def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
+    LOGGER.debug("preprocessing entry %d", i)
+
+    if gaia_stars is not None:
+        mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'])
+
     if preconfig is None:
         return mbobs
     else:
@@ -226,15 +288,28 @@ def _preprocess_for_metadetect(preconfig, mbobs, i, rng):
         return mbobs
 
 
-def _do_metadetect(config, mbobs, seed, i, preconfig):
+def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
+    LOGGER.debug("running mdet for entry %d", i)
     _t0 = time.time()
     res = None
     if mbobs is not None:
         minnum = min([len(olist) for olist in mbobs])
         if minnum > 0:
             rng = np.random.RandomState(seed=seed)
-            mbobs = _preprocess_for_metadetect(preconfig, mbobs, i, rng)
-            res = do_metadetect(config, mbobs, rng)
+            mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
+
+            shear_mbobs = ngmix.MultiBandObsList()
+            nonshear_mbobs = ngmix.MultiBandObsList()
+            for obslist, is_shear_band in zip(mbobs, shear_bands):
+                if is_shear_band:
+                    shear_mbobs.append(obslist)
+                else:
+                    nonshear_mbobs.append(obslist)
+
+            if len(nonshear_mbobs) == 0:
+                nonshear_mbobs = None
+
+            res = do_metadetect(config, shear_mbobs, rng, nonshear_mbobs=nonshear_mbobs)
     return res, i, time.time() - _t0
 
 
@@ -263,20 +338,37 @@ def _make_meds_iterator(mbmeds, start, num):
     def _func():
         for i in range(start, start+num):
             mbobs = mbmeds.get_mbobs(i)
+            LOGGER.debug("read meds entry %d", i)
             yield i, mbobs
 
     return _func
 
 
+def _load_gaia_stars(mbmeds, preconfig):
+    if 'gaia_star_masks' in preconfig:
+        gaia_config = preconfig['gaia_star_masks']
+        gaia_stars = load_gaia_stars(
+            mbmeds=mbmeds,
+            poly_coeffs=gaia_config['poly_coeffs'],
+            max_g_mag=gaia_config['max_g_mag'],
+        )
+    else:
+        gaia_stars = None
+    return gaia_stars
+
+
 def run_metadetect(
-        *,
-        config,
-        multiband_meds,
-        output_file,
-        seed,
-        start=0,
-        num=None,
-        preconfig=None):
+    *,
+    config,
+    multiband_meds,
+    output_file,
+    seed,
+    preconfig,
+    start=0,
+    num=None,
+    n_jobs=1,
+    shear_bands=None,
+):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
 
@@ -288,14 +380,22 @@ def run_metadetect(
         A multiband MEDS data structure.
     output_file : str
         The file to which to write the outputs.
+    seed: int
+        Base seed for generating seeds
+    preconfig : dict
+        Proprocessing configuration.  May contain gaia_star_masks
+        entry.
     start : int, optional
         The first entry of the file to process. Defaults to zero.
     num : int, optional
         The number of entries of the file to process, starting at `start`.
         The default of `None` will process all entries in the file.
-    preconfig : dict or None, optional
-        The default of `None` does no preprocessing. Otherwise preprocessing is
-        done according to the config.
+    n_jobs : int
+        The number of jobs to use.
+    shear_bands : list of bool or None
+        If not None, this is a list of boolean values indicating if a given
+        band is to be used for shear. The length must match the number of MEDS
+        files used to make the `multiband_meds`.
     """
     t0 = time.time()
 
@@ -306,41 +406,65 @@ def run_metadetect(
     if num + start > multiband_meds.size:
         num = multiband_meds.size - start
 
+    if shear_bands is None:
+        shear_bands = [True] * len(multiband_meds.mlist)
+
+    if not any(shear_bands):
+        raise RuntimeError(
+            "You must have at least one band marked to be "
+            "used for shear in `shear_bands`!"
+        )
+
     print('# of slices: %d' % num, flush=True)
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
 
-    n_jobs = int(os.environ.get('OMP_NUM_THREADS', 1))
+    gaia_stars = _load_gaia_stars(mbmeds=multiband_meds, preconfig=preconfig)
+
     if n_jobs == 1:
         outputs = [
             _do_metadetect(
-                config, mbobs, seed+i*256, i, preconfig)
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands)
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
         outputs = joblib.Parallel(
             verbose=100,
-            n_jobs=int(os.environ.get('OMP_NUM_THREADS', 1)),
+            n_jobs=n_jobs,
             pre_dispatch='2*n_jobs',
-            max_nbytes=None
         )(
-            joblib.delayed(_do_metadetect)(config, mbobs, seed+i*256, i, preconfig)
+            joblib.delayed(_do_metadetect)(
+                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands,
+            )
             for i, mbobs in meds_iter()
         )
 
     # join all the outputs
+    meta = multiband_meds.mlist[0].get_meta()
+    pz_config = yaml.safe_load(meta['config'][0])
     output, cpu_time = _post_process_results(
         outputs=outputs,
         obj_data=multiband_meds.mlist[0].get_cat(),
-        image_info=multiband_meds.mlist[0].get_image_info())
+        image_info=multiband_meds.mlist[0].get_image_info(),
+        buffer_size=pz_config['coadd']['buffer_size'],
+        central_size=pz_config['coadd']['central_size'],
+    )
 
     # report and do i/o
     wall_time = time.time() - t0
     print(
-        "run time: ",
+        "run time:",
         str(datetime.timedelta(seconds=int(wall_time))),
-        flush=True)
+        flush=True,
+    )
     print(
-        "CPU seconds per slice: ",
-        cpu_time / len(outputs), flush=True)
+        "CPU time:",
+        str(datetime.timedelta(seconds=int(cpu_time))),
+        flush=True,
+    )
+    print(
+        "CPU seconds per slice:",
+        cpu_time / num,
+        flush=True,
+    )
 
     fitsio.write(output_file, output, clobber=True)
