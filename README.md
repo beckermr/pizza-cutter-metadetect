@@ -4,13 +4,6 @@
 
 code to run metadetect on pizza cutter MEDs files
 
-## Running the tests w/ actual data
-
-To run the test suite with actual data, do the following:
-
-1. Clone this repo: https://github.com/beckermr/des-y3-test-data
-2. Make an environment variable `TEST_DESDATA` that points to where the repo was cloned.
-
 ## Running `metadetect` on a "pizza slice" MEDS File
 
 The module `pizza_cutter.metadetect` has code to run `metadetect`
