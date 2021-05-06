@@ -1,6 +1,6 @@
 import pytest
 
-from ..run_metadetect import _get_part_ranges
+from ..run_metadetect import get_part_ranges
 
 
 @pytest.mark.parametrize("size, n_parts", [
@@ -16,7 +16,7 @@ def test_get_part_ranges(size, n_parts):
     min_num = size
     tot = 0
     for i in range(n_parts):
-        start, num = _get_part_ranges(i+1, n_parts, size)
+        start, num = get_part_ranges(i+1, n_parts, size)
 
         max_num = max([max_num, num])
         if num > 0:

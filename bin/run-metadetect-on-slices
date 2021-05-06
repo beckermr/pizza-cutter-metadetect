@@ -12,7 +12,7 @@ import yaml
 
 from pizza_cutter_metadetect.run_metadetect import (
     run_metadetect,
-    _get_part_ranges,
+    get_part_ranges,
     make_output_filename,
     split_range,
 )
@@ -64,7 +64,7 @@ def _process(
         part, n_parts = part.split(':')
         part = int(part)
         n_parts = int(n_parts)
-        start, num = _get_part_ranges(part, n_parts, mbmeds.size)
+        start, num = get_part_ranges(part, n_parts, mbmeds.size)
     elif meds_range is not None:
         start, end_plus_one, num = split_range(meds_range)
     else:
