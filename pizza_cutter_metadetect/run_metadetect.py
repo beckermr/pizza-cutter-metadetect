@@ -3,6 +3,7 @@ import json
 import time
 import datetime
 import logging
+import copy
 
 import yaml
 import joblib
@@ -93,9 +94,9 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
 
 def _make_output_array(
     *,
-    data, slice_id, mcal_step,
+    data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size,
+    central_size, coadd_dims, model,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -108,28 +109,33 @@ def _make_output_array(
         The data, to be augmented
     slice_id: int
         The slice id
-    mcal_step: str
+    mdet_step: str
         e.g. 'noshear', '1p', '1m', '2p', '2m'
-    orig_start_row: float
+    orig_start_row: int
         Start row of origin of slice
-    orig_start_col: float
+    orig_start_col: int
         Start col of origin of slice
     position_offset: int
         Often 1 for wcs
     wcs: world coordinate system object
         wcs for converting image positions to sky positions
-    buffer_size: float
+    buffer_size: int
         The size of the buffer region to cut for each slice.
-    central_size: float
+    central_size: int
         The size of the central region.
+    coadd_dims: tuple of ints
+        The dimension of the full image that the slices tile.
+    model: str
+        The model used for metadetect. This is used to rename columns starting
+        with '{model}_' to 'mdet_'.
 
     Returns
     -------
     array with new fields
     """
-    add_dt = [
+    new_dt = [
         ('slice_id', 'i8'),
-        ('mcal_step', 'U7'),
+        ('mdet_step', 'U7'),
         ('ra', 'f8'),
         ('dec', 'f8'),
         ('ra_det', 'f8'),
@@ -144,18 +150,28 @@ def _make_output_array(
         ('slice_col_det', 'f8'),
     ]
     skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
+    mpre = model + '_'
     for fld in data.dtype.descr:
         if fld[0] in skip_cols:
             continue
-        add_dt += [fld]
+        elif fld[0].startswith(mpre):
+            new_fld = copy.deepcopy(list(fld))
+            new_fld[0] = "mdet_" + fld[0][len(mpre):]
+            new_fld = tuple(new_fld)
+        else:
+            new_fld = fld
+        new_dt += [new_fld]
 
-    arr = np.zeros(data.shape, dtype=add_dt)
+    arr = np.zeros(data.shape, dtype=new_dt)
     for name in data.dtype.names:
         if name in arr.dtype.names:
             arr[name] = data[name]
+        elif name.startswith(mpre):
+            new_name = "mdet_" + name[len(mpre):]
+            arr[new_name] = data[name]
 
     arr['slice_id'] = slice_id
-    arr['mcal_step'] = mcal_step
+    arr['mdet_step'] = mdet_step
 
     # we swap names here calling the sheared pos _det
     arr['slice_row'] = data['sx_row_noshear']
@@ -186,13 +202,32 @@ def _make_output_array(
         wcs=wcs,
     )
 
-    min_sx = buffer_size
-    max_sx = central_size + buffer_size
+    slice_dim = central_size + 2*buffer_size
+    if orig_start_row == 0:
+        min_slice_row = 0
+        max_slice_row = slice_dim - buffer_size
+    elif orig_start_row + slice_dim == coadd_dims[0]:
+        min_slice_row = buffer_size
+        max_slice_row = slice_dim
+    else:
+        min_slice_row = buffer_size
+        max_slice_row = slice_dim - buffer_size
+
+    if orig_start_col == 0:
+        min_slice_col = 0
+        max_slice_col = slice_dim - buffer_size
+    elif orig_start_col + slice_dim == coadd_dims[1]:
+        min_slice_col = buffer_size
+        max_slice_col = slice_dim
+    else:
+        min_slice_col = buffer_size
+        max_slice_col = slice_dim - buffer_size
+
     msk = (
-        (arr['slice_row'] >= min_sx)
-        & (arr['slice_row'] < max_sx)
-        & (arr['slice_col'] >= min_sx)
-        & (arr['slice_col'] < max_sx)
+        (arr['slice_row'] >= min_slice_row)
+        & (arr['slice_row'] < max_slice_row)
+        & (arr['slice_col'] >= min_slice_col)
+        & (arr['slice_col'] < max_slice_col)
     )
     arr = arr[msk]
     return arr
@@ -211,15 +246,15 @@ def _get_radec(*,
     Parameters
     ----------
     row: array
-        array of rows
+        array of rows in slice coordinates
     col: array
-        array of columns
+        array of columns in slice coordinates
     orig_start_row: float
         Start row of origin of slice
     orig_start_col: float
         Start col of origin of slice
     position_offset: int
-        Often 1 for wcs
+        Always 1 for DES WCS transforms
     wcs: world coordinate system object
         wcs for converting image positions to sky positions
 
@@ -235,7 +270,7 @@ def _get_radec(*,
 
 
 def _post_process_results(
-    *, outputs, obj_data, image_info, buffer_size, central_size
+    *, outputs, obj_data, image_info, buffer_size, central_size, config
 ):
     # post process results
     wcs_cache = {}
@@ -247,7 +282,7 @@ def _post_process_results(
             continue
 
         dt += _dt
-        for mcal_step, data in res.items():
+        for mdet_step, data in res.items():
             if data.size > 0:
                 file_id = obj_data['file_id'][i, 0]
                 if file_id in wcs_cache:
@@ -257,16 +292,38 @@ def _post_process_results(
                     position_offset = image_info['position_offset'][file_id]
                     wcs_cache[file_id] = (wcs, position_offset)
 
+                # compute the dims of the full image so we can keep buffers on the edge
+                slize_size = central_size + 2*buffer_size
+                max_slice_row = (
+                    int(np.max(obj_data['orig_start_row'][i, 0]))
+                    + slize_size
+                )
+                max_slice_col = (
+                    int(np.max(obj_data['orig_start_col'][i, 0]))
+                    + slize_size
+                )
+                coadd_dims = (
+                    max_slice_row - int(np.min(obj_data['orig_start_row'][i, 0])),
+                    max_slice_col - int(np.min(obj_data['orig_start_col'][i, 0])),
+                )
+                if coadd_dims != (10000, 10000):
+                    LOGGER.critical(
+                        "Computed coadd dims of %s which is not quite right for DES!",
+                        coadd_dims,
+                    )
+
                 output.append(_make_output_array(
                     data=data,
                     slice_id=obj_data['id'][i],
-                    mcal_step=mcal_step,
+                    mdet_step=mdet_step,
                     orig_start_col=obj_data['orig_start_col'][i, 0],
                     orig_start_row=obj_data['orig_start_row'][i, 0],
                     wcs=wcs,
                     position_offset=position_offset,
                     buffer_size=buffer_size,
                     central_size=central_size,
+                    coadd_dims=coadd_dims,
+                    model=config['model'],
                 ))
 
     # concatenate once since generally more efficient
@@ -313,7 +370,7 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
     return res, i, time.time() - _t0
 
 
-def _get_part_ranges(part, n_parts, size):
+def get_part_ranges(part, n_parts, size):
     n_per = size // n_parts
     n_extra = size - n_per * n_parts
     n_per = np.ones(n_parts, dtype=np.int64) * n_per
@@ -445,8 +502,9 @@ def run_metadetect(
         outputs=outputs,
         obj_data=multiband_meds.mlist[0].get_cat(),
         image_info=multiband_meds.mlist[0].get_image_info(),
-        buffer_size=pz_config['coadd']['buffer_size'],
-        central_size=pz_config['coadd']['central_size'],
+        buffer_size=int(pz_config['coadd']['buffer_size']),
+        central_size=int(pz_config['coadd']['central_size']),
+        config=config,
     )
 
     # report and do i/o
