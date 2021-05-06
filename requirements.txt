@@ -18,3 +18,4 @@ piff
 cfitsio
 metadetect
 des-pizza-cutter
+des-sxdes
