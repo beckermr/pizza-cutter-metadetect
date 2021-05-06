@@ -11,7 +11,7 @@ from ..run_metadetect import get_part_ranges
     (100, 1000),
     (4343, 4000)
 ])
-def testget_part_ranges(size, n_parts):
+def test_get_part_ranges(size, n_parts):
     max_num = -1
     min_num = size
     tot = 0
