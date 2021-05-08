@@ -293,11 +293,9 @@ def _post_process_results(
                     wcs_cache[file_id] = (wcs, position_offset)
 
                 coadd_dims = (wcs.get_naxis()[0], wcs.get_naxis()[1])
-                if coadd_dims != (10000, 10000):
-                    LOGGER.critical(
-                        "Computed coadd dims of %s which is not quite right for DES!",
-                        coadd_dims,
-                    )
+                assert coadd_dims == (10000, 10000), (
+                    "Wrong coadd dims %s computed!" % coadd_dims
+                )
 
                 output.append(_make_output_array(
                     data=data,
