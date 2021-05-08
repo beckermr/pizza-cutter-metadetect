@@ -292,20 +292,7 @@ def _post_process_results(
                     position_offset = image_info['position_offset'][file_id]
                     wcs_cache[file_id] = (wcs, position_offset)
 
-                # compute the dims of the full image so we can keep buffers on the edge
-                slize_size = central_size + 2*buffer_size
-                max_slice_row = (
-                    int(np.max(obj_data['orig_start_row'][i, 0]))
-                    + slize_size
-                )
-                max_slice_col = (
-                    int(np.max(obj_data['orig_start_col'][i, 0]))
-                    + slize_size
-                )
-                coadd_dims = (
-                    max_slice_row - int(np.min(obj_data['orig_start_row'][i, 0])),
-                    max_slice_col - int(np.min(obj_data['orig_start_col'][i, 0])),
-                )
+                coadd_dims = (wcs.get_naxis()[0], wcs.get_naxis()[1])
                 if coadd_dims != (10000, 10000):
                     LOGGER.critical(
                         "Computed coadd dims of %s which is not quite right for DES!",
