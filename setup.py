@@ -1,24 +1,16 @@
-import os
 from setuptools import setup, find_packages
 
 scripts = [
     'bin/run-metadetect-on-slices',
 ]
 
-__version__ = None
-pth = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)),
-    "pizza_cutter_metadetect",
-    "_version.py")
-with open(pth, 'r') as fp:
-    exec(fp.read())
-
 setup(
     name='pizza_cutter_metadetect',
-    version=__version__,
     description="run metadetect on yummy survey slices",
     author="MRB and ESS",
     packages=find_packages(),
     include_package_data=True,
     scripts=scripts,
+    use_scm_version=True,
+    setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
 )
