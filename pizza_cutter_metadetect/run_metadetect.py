@@ -473,6 +473,7 @@ def run_metadetect(
             verbose=100,
             n_jobs=n_jobs,
             pre_dispatch='2*n_jobs',
+            max_nbytes=None,  # never memmap
         )(
             joblib.delayed(_do_metadetect)(
                 config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands,
