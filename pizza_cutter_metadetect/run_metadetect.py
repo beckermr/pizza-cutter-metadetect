@@ -92,6 +92,39 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     return fname
 
 
+def _make_output_dtype(*, old_dt, model):
+    new_dt = [
+        ('slice_id', 'i8'),
+        ('mdet_step', 'U7'),
+        ('ra', 'f8'),
+        ('dec', 'f8'),
+        ('ra_det', 'f8'),
+        ('dec_det', 'f8'),
+        ('row_det', 'f8'),
+        ('col_det', 'f8'),
+        ('row', 'f8'),
+        ('col', 'f8'),
+        ('slice_row', 'f8'),
+        ('slice_col', 'f8'),
+        ('slice_row_det', 'f8'),
+        ('slice_col_det', 'f8'),
+    ]
+    skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
+    mpre = model + '_'
+    for fld in old_dt:
+        if fld[0] in skip_cols:
+            continue
+        elif fld[0].startswith(mpre):
+            new_fld = copy.deepcopy(list(fld))
+            new_fld[0] = "mdet_" + fld[0][len(mpre):]
+            new_fld = tuple(new_fld)
+        else:
+            new_fld = fld
+        new_dt += [new_fld]
+
+    return new_dt
+
+
 def _make_output_array(
     *,
     data, slice_id, mdet_step,
@@ -133,35 +166,11 @@ def _make_output_array(
     -------
     array with new fields
     """
-    new_dt = [
-        ('slice_id', 'i8'),
-        ('mdet_step', 'U7'),
-        ('ra', 'f8'),
-        ('dec', 'f8'),
-        ('ra_det', 'f8'),
-        ('dec_det', 'f8'),
-        ('row_det', 'f8'),
-        ('col_det', 'f8'),
-        ('row', 'f8'),
-        ('col', 'f8'),
-        ('slice_row', 'f8'),
-        ('slice_col', 'f8'),
-        ('slice_row_det', 'f8'),
-        ('slice_col_det', 'f8'),
-    ]
-    skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
+    new_dt = _make_output_dtype(
+        old_dt=data.dtype.descr,
+        model=model,
+    )
     mpre = model + '_'
-    for fld in data.dtype.descr:
-        if fld[0] in skip_cols:
-            continue
-        elif fld[0].startswith(mpre):
-            new_fld = copy.deepcopy(list(fld))
-            new_fld[0] = "mdet_" + fld[0][len(mpre):]
-            new_fld = tuple(new_fld)
-        else:
-            new_fld = fld
-        new_dt += [new_fld]
-
     arr = np.zeros(data.shape, dtype=new_dt)
     for name in data.dtype.names:
         if name in arr.dtype.names:
@@ -311,8 +320,11 @@ def _post_process_results(
                     model=config['model'],
                 ))
 
-    # concatenate once since generally more efficient
-    output = np.concatenate(output)
+    if len(output) > 0:
+        # concatenate once since generally more efficient
+        output = np.concatenate(output)
+    else:
+        output = None
 
     return output, dt
 
@@ -511,4 +523,7 @@ def run_metadetect(
         flush=True,
     )
 
-    fitsio.write(output_file, output, clobber=True)
+    if output is not None:
+        fitsio.write(output_file, output, clobber=True)
+    else:
+        print("WARNING: no output produced by metadetect!", flush=True)
