@@ -90,9 +90,17 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
                     interp_noise = _grid_interp(
                         image=obs.noise, bad_msk=bad_logic, maxfrac=1.0,
                     )
-                    obs.image = interp_image
-                    obs.noise = interp_noise
-                    obs.bmask[wbad] |= BMASK_SPLINE_INTERP
+                    if interp_image is None or interp_noise is None:
+                        obs.bmask |= BMASK_GAIA_STAR
+                        obs.mfrac[:, :] = 1.0
+                        obs.weight[:, :] = 0.0
+                        # this is ok here, but we need to add a way to
+                        # expose this in ngmix
+                        obs._ignore_zero_weight = False
+                    else:
+                        obs.image = interp_image
+                        obs.noise = interp_noise
+                        obs.bmask[wbad] |= BMASK_SPLINE_INTERP
 
 
 def make_gaia_mask(
