@@ -81,7 +81,8 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
                 with obs.writeable():
                     obs.bmask |= gaia_bmask
 
-                    obs.mfrac[wbad] = 1.0
+                    if hasattr(obs, "mfrac"):
+                        obs.mfrac[wbad] = 1.0
                     obs.weight[wbad] = 0.0
 
                     interp_image = _grid_interp(
@@ -92,7 +93,8 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
                     )
                     if interp_image is None or interp_noise is None:
                         obs.bmask |= BMASK_GAIA_STAR
-                        obs.mfrac[:, :] = 1.0
+                        if hasattr(obs, "mfrac"):
+                            obs.mfrac[:, :] = 1.0
                         obs.weight[:, :] = 0.0
                         # this is ok here, but we need to add a way to
                         # expose this in ngmix
