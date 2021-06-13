@@ -12,8 +12,8 @@ import esutil as eu
 import fitsio
 import ngmix
 
+from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
-from pizza_cutter.slice_utils.pbar import PBar
 from pizza_cutter.files import expandpath
 from .gaia_stars import load_gaia_stars, mask_gaia_stars
 
