@@ -16,6 +16,11 @@ from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
 from pizza_cutter.files import expandpath
 from .gaia_stars import load_gaia_stars, mask_gaia_stars
+from .masks import (
+    make_mask, get_slice_bounds, in_unique_coadd_tile_region,
+    MASK_TILEDUPE, MASK_SLICEDUPE,
+)
+from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
 LOGGER = logging.getLogger(__name__)
 
@@ -108,6 +113,7 @@ def _make_output_dtype(*, old_dt, model):
         ('slice_col', 'f8'),
         ('slice_row_det', 'f8'),
         ('slice_col_det', 'f8'),
+        ('duplicate_flags', 'i4'),
     ]
     skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
     mpre = model + '_'
@@ -129,7 +135,7 @@ def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model,
+    central_size, coadd_dims, model, info,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -161,6 +167,8 @@ def _make_output_array(
     model: str
         The model used for metadetect. This is used to rename columns starting
         with '{model}_' to 'mdet_'.
+    info : dict
+        Dict of tile geom information for getting detections in the tile boundaries.
 
     Returns
     -------
@@ -211,34 +219,33 @@ def _make_output_array(
         wcs=wcs,
     )
 
-    slice_dim = central_size + 2*buffer_size
-    if orig_start_row == 0:
-        min_slice_row = 0
-        max_slice_row = slice_dim - buffer_size
-    elif orig_start_row + slice_dim == coadd_dims[0]:
-        min_slice_row = buffer_size
-        max_slice_row = slice_dim
-    else:
-        min_slice_row = buffer_size
-        max_slice_row = slice_dim - buffer_size
-
-    if orig_start_col == 0:
-        min_slice_col = 0
-        max_slice_col = slice_dim - buffer_size
-    elif orig_start_col + slice_dim == coadd_dims[1]:
-        min_slice_col = buffer_size
-        max_slice_col = slice_dim
-    else:
-        min_slice_col = buffer_size
-        max_slice_col = slice_dim - buffer_size
+    slice_bnds = get_slice_bounds(
+        orig_start_col=orig_start_col,
+        orig_start_row=orig_start_row,
+        central_size=central_size,
+        buffer_size=buffer_size,
+        coadd_dims=coadd_dims
+    )
 
     msk = (
-        (arr['slice_row'] >= min_slice_row)
-        & (arr['slice_row'] < max_slice_row)
-        & (arr['slice_col'] >= min_slice_col)
-        & (arr['slice_col'] < max_slice_col)
+        (arr['slice_row'] >= slice_bnds["min_row"])
+        & (arr['slice_row'] < slice_bnds["max_row"])
+        & (arr['slice_col'] >= slice_bnds["min_col"])
+        & (arr['slice_col'] < slice_bnds["min_col"])
     )
-    arr = arr[msk]
+    arr["duplicate_flags"][~msk] |= MASK_SLICEDUPE
+
+    msk = in_unique_coadd_tile_region(
+        ra=arr['ra'],
+        dec=arr['dec'],
+        crossra0=info['crossra0'],
+        udecmin=info['udecmin'],
+        udecmax=info['udecmax'],
+        uramin=info['uramin'],
+        uramax=info['uramax'],
+    )
+    arr["duplicate_flags"][~msk] |= MASK_TILEDUPE
+
     return arr
 
 
@@ -279,16 +286,17 @@ def _get_radec(*,
 
 
 def _post_process_results(
-    *, outputs, obj_data, image_info, buffer_size, central_size, config
+    *, outputs, obj_data, image_info, buffer_size, central_size, config, info
 ):
     # post process results
     wcs_cache = {}
 
     output = []
     dt = 0
+    missing_slice_inds = []
     for res, i, _dt in outputs:
         if res is None:
-            continue
+            missing_slice_inds.append(i)
 
         dt += _dt
         for mdet_step, data in res.items():
@@ -318,6 +326,7 @@ def _post_process_results(
                     central_size=central_size,
                     coadd_dims=coadd_dims,
                     model=config['model'],
+                    info=info,
                 ))
 
     if len(output) > 0:
@@ -326,7 +335,9 @@ def _post_process_results(
     else:
         output = None
 
-    return output, dt
+    assert len(wcs_cache) == 1
+
+    return output, dt, missing_slice_inds, wcs, position_offset, coadd_dims
 
 
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
@@ -368,6 +379,25 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
 
 
 def get_part_ranges(part, n_parts, size):
+    """Divide a list of things of length `size` into `n_parts` and
+    retrurn the range for the given `part`.
+
+    Parameters
+    ----------
+    part : int
+        The 1-indexed part.
+    n_parts : int
+        The total number of parts.
+    size : int
+        The length of the list of items to split into `n_parts`.
+
+    Returns
+    -------
+    start : int
+        The staring location.
+    num : int
+        The number of items in the part.
+    """
     n_per = size // n_parts
     n_extra = size - n_per * n_parts
     n_per = np.ones(n_parts, dtype=np.int64) * n_per
@@ -416,6 +446,7 @@ def run_metadetect(
     config,
     multiband_meds,
     output_file,
+    mask_output_file,
     seed,
     preconfig,
     start=0,
@@ -434,6 +465,8 @@ def run_metadetect(
         A multiband MEDS data structure.
     output_file : str
         The file to which to write the outputs.
+    mask_output_file : str
+        The file to write the healsparse mask to.
     seed: int
         Base seed for generating seeds
     preconfig : dict
@@ -495,14 +528,43 @@ def run_metadetect(
 
     # join all the outputs
     meta = multiband_meds.mlist[0].get_meta()
+    if 'tile_info' not in meta.dtype.names:
+        print(
+            "WARNING: tile info not found! attempting to read from the database!",
+            flush=True,
+        )
+        tilename = json.loads(
+            multiband_meds.mlist[0].get_image_info()['wcs'][0]
+        )['desfname'].split("_")[0]
+        info = get_coaddtile_geom(tilename)
+    else:
+        info = json.loads(meta["tile_info"][0])
+
     pz_config = yaml.safe_load(meta['config'][0])
-    output, cpu_time = _post_process_results(
+    (
+        output, cpu_time, missing_slice_inds, wcs, position_offset, coadd_dims
+    ) = _post_process_results(
         outputs=outputs,
         obj_data=multiband_meds.mlist[0].get_cat(),
         image_info=multiband_meds.mlist[0].get_image_info(),
         buffer_size=int(pz_config['coadd']['buffer_size']),
         central_size=int(pz_config['coadd']['central_size']),
         config=config,
+        info=info,
+    )
+
+    # make the masks
+    hs_msk = make_mask(
+        preconfig=preconfig,
+        gaia_stars=gaia_stars,
+        missing_slice_inds=missing_slice_inds,
+        obj_data=multiband_meds.mlist[0].get_cat(),
+        buffer_size=int(pz_config['coadd']['buffer_size']),
+        central_size=int(pz_config['coadd']['central_size']),
+        wcs=wcs,
+        position_offset=position_offset,
+        coadd_dims=coadd_dims,
+        info=info,
     )
 
     # report and do i/o
@@ -525,5 +587,6 @@ def run_metadetect(
 
     if output is not None:
         fitsio.write(output_file, output, clobber=True)
+        hs_msk.write(mask_output_file, clobber=True)
     else:
         print("WARNING: no output produced by metadetect!", flush=True)

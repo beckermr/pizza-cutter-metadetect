@@ -88,10 +88,11 @@ def _process(
             )
         shear_bands = [True if int(s) == 1 else False for s in shear_bands]
 
-    def _call(output_file):
+    def _call(output_file, mask_output_file):
         run_metadetect(
             config=_config,
             output_file=output_file,
+            mask_output_file=mask_output_file,
             multiband_meds=mbmeds,
             seed=seed,
             preconfig=_preconfig,
@@ -111,15 +112,20 @@ def _process(
             part,
             meds_range,
         )
+    mask_filename = filename[:-len(".fits")] + "-healsparse-mask.hs"
 
     makedir_fromfile(filename)
+    makedir_fromfile(mask_filename)
     print('output file:', filename, flush=True)
+    print('mask output file:', mask_filename, flush=True)
 
     # if tmpdir is none, no staging or local dir is used
     with StagedOutFile(filename, tmpdir=tmpdir) as sf:
-        _call(sf.path)
+        with StagedOutFile(mask_filename, tmpdir=tmpdir) as msf:
+            _call(sf.path, msf.path)
 
     print('output is in:', filename, flush=True)
+    print('mask output is in:', mask_filename, flush=True)
 
 
 @click.command()
