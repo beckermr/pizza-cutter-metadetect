@@ -141,6 +141,74 @@ def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde):
     return hs_msk
 
 
+def _mask_one_gaia_stars(
+    *,
+    buffer_size,
+    central_size,
+    gaia_stars,
+    symmetrize,
+    coadd_dims,
+    msk_img,
+    scol,
+    srow,
+):
+    # compute the gaia mask for one slice
+    slice_dim = buffer_size*2 + central_size
+    slice_msk = make_gaia_mask(
+        gaia_stars,
+        dims=(slice_dim, slice_dim),
+        start_row=srow,
+        start_col=scol,
+        symmetrize=symmetrize,
+    )
+
+    # reset the bits to match our output bits
+    msk = slice_msk != 0
+    slice_msk[:, :] = 0
+    slice_msk[msk] = MASK_GAIA_STAR
+
+    # get the final bounds for this slice
+    # these bounds are in local slice coords
+    slice_bnds = get_slice_bounds(
+        orig_start_col=scol,
+        orig_start_row=srow,
+        central_size=central_size,
+        buffer_size=buffer_size,
+        coadd_dims=coadd_dims,
+    )
+
+    # set the right entries in the global mask image
+    msk_img[
+        slice_bnds["min_row"]+srow:slice_bnds["max_row"]+srow,
+        slice_bnds["min_col"]+scol:slice_bnds["max_col"]+scol,
+    ] |= slice_msk[
+        slice_bnds["min_row"]:slice_bnds["max_row"],
+        slice_bnds["min_col"]:slice_bnds["max_col"],
+    ]
+
+
+def _mask_one_slice(
+    *,
+    buffer_size,
+    central_size,
+    coadd_dims,
+    msk_img,
+    scol,
+    srow,
+):
+    slice_bnds = get_slice_bounds(
+        orig_start_col=scol,
+        orig_start_row=srow,
+        central_size=central_size,
+        buffer_size=buffer_size,
+        coadd_dims=coadd_dims,
+    )
+    msk_img[
+        slice_bnds["min_row"]+srow:slice_bnds["max_row"]+srow,
+        slice_bnds["min_col"]+scol:slice_bnds["max_col"]+scol,
+    ] |= MASK_NOSLICE
+
+
 def make_mask(
     *,
     preconfig,
@@ -215,55 +283,30 @@ def make_mask(
     # apply a 90 degree rotation to the mask holes within each slice
     # this is done in the GAIA masking functions we have and so we use those here
     if gaia_stars is not None:
-        slice_dim = buffer_size*2 + central_size
         for slice_ind in tqdm.trange(len(obj_data), desc='making GAIA masks', ncols=79):
-            scol = obj_data["orig_start_col"][slice_ind, 0]
-            srow = obj_data["orig_start_row"][slice_ind, 0]
-
-            slice_msk = make_gaia_mask(
-                gaia_stars,
-                dims=(slice_dim, slice_dim),
-                start_row=srow,
-                start_col=scol,
-                symmetrize=preconfig["gaia_star_masks"]["symmetrize"],
-            )
-            msk = slice_msk != 0
-            slice_msk[:, :] = 0
-            slice_msk[msk] = MASK_GAIA_STAR
-
-            slice_bnds = get_slice_bounds(
-                orig_start_col=scol,
-                orig_start_row=srow,
-                central_size=central_size,
+            _mask_one_gaia_stars(
                 buffer_size=buffer_size,
+                central_size=central_size,
+                gaia_stars=gaia_stars,
+                symmetrize=preconfig["gaia_star_masks"]["symmetrize"],
                 coadd_dims=coadd_dims,
+                msk_img=msk_img,
+                scol=obj_data["orig_start_col"][slice_ind, 0],
+                srow=obj_data["orig_start_row"][slice_ind, 0],
             )
-
-            msk_img[
-                slice_bnds["min_row"]+srow:slice_bnds["max_row"]+srow,
-                slice_bnds["min_col"]+scol:slice_bnds["max_col"]+scol,
-            ] |= slice_msk[
-                slice_bnds["min_row"]:slice_bnds["max_row"],
-                slice_bnds["min_col"]:slice_bnds["max_col"],
-            ]
 
     # then do the slice masks for missing slices
     # these are formally defined in pixels, not ra-dec, though we could likely
     # use healsparse convex polygons instead of the pixels
     for slice_ind in tqdm.tqdm(missing_slice_inds, desc='making slice masks', ncols=79):
-        scol = obj_data["orig_start_col"][slice_ind, 0]
-        srow = obj_data["orig_start_row"][slice_ind, 0]
-        slice_bnds = get_slice_bounds(
-            orig_start_col=scol,
-            orig_start_row=srow,
-            central_size=central_size,
+        _mask_one_slice(
             buffer_size=buffer_size,
+            central_size=central_size,
             coadd_dims=coadd_dims,
+            msk_img=msk_img,
+            scol=obj_data["orig_start_col"][slice_ind, 0],
+            srow=obj_data["orig_start_row"][slice_ind, 0],
         )
-        msk_img[
-            slice_bnds["min_row"]+srow:slice_bnds["max_row"]+srow,
-            slice_bnds["min_col"]+scol:slice_bnds["max_col"]+scol,
-        ] |= MASK_NOSLICE
 
     # now lets flatten to bad pixels so far
     # this is done to make the next bit of code easier to write

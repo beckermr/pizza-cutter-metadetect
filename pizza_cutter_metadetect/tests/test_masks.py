@@ -5,6 +5,10 @@ from ..masks import (
     in_unique_coadd_tile_region,
     get_slice_bounds,
     _convert_ra_dec_vals_to_healsparse,
+    _mask_one_gaia_stars,
+    _mask_one_slice,
+    MASK_GAIA_STAR,
+    MASK_NOSLICE,
 )
 
 
@@ -158,3 +162,94 @@ def test_convert_ra_dec_vals_to_healsparse():
         hs_msk.get_values_pos(ra, dec),
         np.array([2**0 | 2**1, 2**2, 2**3, 2**0 | 2**1], dtype=np.int32),
     )
+
+
+def test_mask_one_gaia_stars(show=False):
+    buffer_size = 5
+    central_size = 10
+    coadd_dims = (100, 100)
+
+    gaia_stars = np.array(
+        [(20, 10, 5)],
+        dtype=[('x', 'f4'), ('y', 'f4'), ('radius_pixels', 'f4')],
+    )
+
+    msk_img = np.zeros(coadd_dims, dtype=np.int32)
+    _mask_one_gaia_stars(
+        buffer_size=buffer_size,
+        central_size=central_size,
+        gaia_stars=gaia_stars,
+        symmetrize=False,
+        coadd_dims=coadd_dims,
+        msk_img=msk_img,
+        scol=15,
+        srow=0,
+    )
+
+    assert np.any((msk_img & MASK_GAIA_STAR) != 0)
+    assert np.all((msk_img[10, 20:24] & MASK_GAIA_STAR) != 0)
+    assert np.all((msk_img[10, 16:20] & MASK_GAIA_STAR) == 0)
+    assert np.all((msk_img[14, 23:26] & MASK_GAIA_STAR) == 0)
+
+    if show:
+        import matplotlib.pyplot as plt
+        plt.figure()
+        plt.imshow(msk_img)
+        import pdb
+        pdb.set_trace()
+
+    msk_img = np.zeros(coadd_dims, dtype=np.int32)
+    _mask_one_gaia_stars(
+        buffer_size=buffer_size,
+        central_size=central_size,
+        gaia_stars=gaia_stars,
+        symmetrize=True,
+        coadd_dims=coadd_dims,
+        msk_img=msk_img,
+        scol=15,
+        srow=0,
+    )
+
+    if show:
+        import matplotlib.pyplot as plt
+        plt.figure()
+        plt.imshow(msk_img)
+        import pdb
+        pdb.set_trace()
+
+    assert np.any((msk_img & MASK_GAIA_STAR) != 0)
+    assert np.all((msk_img[10, 20:24] & MASK_GAIA_STAR) != 0)
+    assert np.all((msk_img[10, 16:20] & MASK_GAIA_STAR) == 0)
+    assert np.all((msk_img[14, 20:26] & MASK_GAIA_STAR) != 0)
+
+
+def test_mask_one_slice():
+    buffer_size = 5
+    central_size = 10
+    coadd_dims = (100, 100)
+
+    msk_img = np.zeros(coadd_dims, dtype=np.int32)
+
+    _mask_one_slice(
+        buffer_size=buffer_size,
+        central_size=central_size,
+        coadd_dims=coadd_dims,
+        msk_img=msk_img,
+        scol=15,
+        srow=0,
+    )
+
+    assert np.all((msk_img[0:15, 20:30] & MASK_NOSLICE) != 0)
+    assert np.all((msk_img[15:, 30:] & MASK_NOSLICE) == 0)
+
+    _mask_one_slice(
+        buffer_size=buffer_size,
+        central_size=central_size,
+        coadd_dims=coadd_dims,
+        msk_img=msk_img,
+        scol=15,
+        srow=15,
+    )
+
+    assert np.all((msk_img[20:30, 20:30] & MASK_NOSLICE) != 0)
+    assert np.all((msk_img[30:, 30:] & MASK_NOSLICE) == 0)
