@@ -242,8 +242,8 @@ def test_make_output_array():
         crval1=321.417528,
         crval2=1.444444))
     position_offset = 2
-    orig_start_col = 10
-    orig_start_row = 20
+    orig_start_col = 325
+    orig_start_row = 330
     slice_id = 11
     mdet_step = 'blah'
 
@@ -258,10 +258,10 @@ def test_make_output_array():
     ]
     data = np.zeros(10, dtype=dtype)
 
-    data['sx_row'] = np.arange(10) + 324
-    data['sx_col'] = np.arange(10) + 326
-    data['sx_row_noshear'] = np.arange(10) + 325
-    data['sx_col_noshear'] = np.arange(10) + 327
+    data['sx_row'] = np.arange(10) + 7
+    data['sx_col'] = np.arange(10) + 12
+    data['sx_row_noshear'] = np.arange(10) + 8
+    data['sx_col_noshear'] = np.arange(10) + 13
     data['a'] = np.arange(10)
     data['wmomm_blah'] = np.arange(10) + 23.5
     data['wmom_blah'] = np.arange(10) + 314234.5
@@ -274,25 +274,30 @@ def test_make_output_array():
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
-        buffer_size=328,
-        central_size=5,
+        buffer_size=5,
+        central_size=10,
         coadd_dims=(10000, 10000),
         model='wmomm',
+        info={
+            'crossra0': 'Y',
+            'udecmin': -90,
+            'udecmax': 90,
+            'uramin': 180,
+            'uramax': 180,
+        },
     )
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
 
-    msk = (
-        (data['sx_row_noshear'] >= 328)
-        & (data['sx_row_noshear'] < 333)
-        & (data['sx_col_noshear'] >= 328)
-        & (data['sx_col_noshear'] < 333)
-    )
+    # the bounds of the slice are [5,15) for both row and col
+    # thus only first two elements of sx_col_noshear pass since they are
+    # from np.arange(10) + 13 = [13, 14, 15, ...]
+    assert np.array_equal(arr["duplicate_flags"], [0] * 2 + [4] * 8)
 
-    assert np.array_equal(arr['a'], data['a'][msk])
-    assert np.array_equal(arr['wmom_blah'], data['wmom_blah'][msk])
-    assert np.array_equal(arr['mdet_blah'], data['wmomm_blah'][msk])
+    assert np.array_equal(arr['a'], data['a'])
+    assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])
+    assert np.array_equal(arr['mdet_blah'], data['wmomm_blah'])
 
     ra, dec = wcs.image2sky(
         x=data['sx_col_noshear'] + orig_start_col + position_offset,
@@ -302,15 +307,15 @@ def test_make_output_array():
         x=data['sx_col'] + orig_start_col + position_offset,
         y=data['sx_row'] + orig_start_row + position_offset,
     )
-    assert np.all(arr['ra'] == ra[msk])
-    assert np.all(arr['dec'] == dec[msk])
-    assert np.all(arr['ra_det'] == ura[msk])
-    assert np.all(arr['dec_det'] == udec[msk])
+    assert np.all(arr['ra'] == ra)
+    assert np.all(arr['dec'] == dec)
+    assert np.all(arr['ra_det'] == ura)
+    assert np.all(arr['dec_det'] == udec)
 
-    assert np.all(arr['slice_row_det'] == data['sx_row'][msk])
-    assert np.all(arr['slice_col_det'] == data['sx_col'][msk])
-    assert np.all(arr['slice_row'] == data['sx_row_noshear'][msk])
-    assert np.all(arr['slice_col'] == data['sx_col_noshear'][msk])
+    assert np.all(arr['slice_row_det'] == data['sx_row'])
+    assert np.all(arr['slice_col_det'] == data['sx_col'])
+    assert np.all(arr['slice_row'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_col'] == data['sx_col_noshear'])
 
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
@@ -390,6 +395,13 @@ def test_make_output_array_bounds(
         central_size=central_size,
         coadd_dims=coadd_dims,
         model='wmomm',
+        info={
+            'crossra0': 'Y',
+            'udecmin': -90,
+            'udecmax': 90,
+            'uramin': 180,
+            'uramax': 180,
+        },
     )
 
     assert np.all(arr['slice_id'] == slice_id)
@@ -401,10 +413,13 @@ def test_make_output_array_bounds(
         & (data['sx_col_noshear'] >= min_col)
         & (data['sx_col_noshear'] < max_col)
     )
+    flags = np.zeros(21, dtype=np.int32) + 4
+    flags[msk] = 0
+    assert np.array_equal(arr["duplicate_flags"], flags)
 
-    assert np.array_equal(arr['a'], data['a'][msk])
-    assert np.array_equal(arr['wmom_blah'], data['wmom_blah'][msk])
-    assert np.array_equal(arr['mdet_blah'], data['wmomm_blah'][msk])
+    assert np.array_equal(arr['a'], data['a'])
+    assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])
+    assert np.array_equal(arr['mdet_blah'], data['wmomm_blah'])
 
     ra, dec = wcs.image2sky(
         x=data['sx_col_noshear'] + orig_start_col + position_offset,
@@ -414,15 +429,15 @@ def test_make_output_array_bounds(
         x=data['sx_col'] + orig_start_col + position_offset,
         y=data['sx_row'] + orig_start_row + position_offset,
     )
-    assert np.all(arr['ra'] == ra[msk])
-    assert np.all(arr['dec'] == dec[msk])
-    assert np.all(arr['ra_det'] == ura[msk])
-    assert np.all(arr['dec_det'] == udec[msk])
+    assert np.all(arr['ra'] == ra)
+    assert np.all(arr['dec'] == dec)
+    assert np.all(arr['ra_det'] == ura)
+    assert np.all(arr['dec_det'] == udec)
 
-    assert np.all(arr['slice_row_det'] == data['sx_row'][msk])
-    assert np.all(arr['slice_col_det'] == data['sx_col'][msk])
-    assert np.all(arr['slice_row'] == data['sx_row_noshear'][msk])
-    assert np.all(arr['slice_col'] == data['sx_col_noshear'][msk])
+    assert np.all(arr['slice_row_det'] == data['sx_row'])
+    assert np.all(arr['slice_col_det'] == data['sx_col'])
+    assert np.all(arr['slice_row'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_col'] == data['sx_col_noshear'])
 
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names

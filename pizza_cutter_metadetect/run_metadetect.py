@@ -231,7 +231,7 @@ def _make_output_array(
         (arr['slice_row'] >= slice_bnds["min_row"])
         & (arr['slice_row'] < slice_bnds["max_row"])
         & (arr['slice_col'] >= slice_bnds["min_col"])
-        & (arr['slice_col'] < slice_bnds["min_col"])
+        & (arr['slice_col'] < slice_bnds["max_col"])
     )
     arr["duplicate_flags"][~msk] |= MASK_SLICEDUPE
 
