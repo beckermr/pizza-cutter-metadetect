@@ -128,7 +128,7 @@ def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde):
     )
     # this bit of code accounts for duplicate indicies in nest_inds which
     # healsparse could not handle initially
-    # it can be rewmoved evenbtually once healsparse is fixed
+    # it can be removed eventually once healsparse is fixed
     uinds, iindex = np.unique(nest_inds, return_inverse=True)
     uvals = np.zeros_like(uinds, dtype=np.int32)
     np.bitwise_or.at(uvals, iindex, vals)
