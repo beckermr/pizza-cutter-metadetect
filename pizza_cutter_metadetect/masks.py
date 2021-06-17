@@ -122,6 +122,25 @@ def get_slice_bounds(
     }
 
 
+def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde):
+    nest_inds = hp.ang2pix(
+        healpix_nisde, ra, dec,  nest=True, lonlat=True,
+    )
+    # this bit of code accounts for duplicate indicies in nest_inds which
+    # healsparse could not handle initially
+    # it can be rewmoved evenbtually once healsparse is fixed
+    uinds, iindex = np.unique(nest_inds, return_inverse=True)
+    uvals = np.zeros_like(uinds, dtype=np.int32)
+    np.bitwise_or.at(uvals, iindex, vals)
+
+    # now set the map
+    hs_msk = healsparse.HealSparseMap.make_empty(
+        32, healpix_nisde, np.int32, sentinel=0
+    )
+    hs_msk.update_values_pix(uinds, uvals, nest=True, operation='or')
+    return hs_msk
+
+
 def make_mask(
     *,
     preconfig,
@@ -180,11 +199,23 @@ def make_mask(
             MASK_NOSLICE = 2**0 - indicates no data for a given coadd slice
             MASK_GAIA_STAR = 2**1 - indicates regions where a GAIA star hole exists
     """
-    slice_dim = buffer_size*2 + central_size
+    # We will build a coadd image of the mask bits and then convert them to
+    # healsparse at the end. We do things this way for a few reasons.
+    # 1. The coadd image of mask bits is the mask actually used by the code.
+    # 2. We do not have pure geometric primitives that are easy to write down
+    #    in healsparse due to various factors.
+    # 3. it makes the code a bit simpler since we don't have to combine more
+    #    than one representation of the mask to get the final one
+
+    # this image holds the mask bits
     msk_img = np.zeros(coadd_dims, dtype=np.int32)
 
     # first do GAIA star masks
+    # we don't union healsparse.Circle objects because we may need to
+    # apply a 90 degree rotation to the mask holes within each slice
+    # this is done in the GAIA masking functions we have and so we use those here
     if gaia_stars is not None:
+        slice_dim = buffer_size*2 + central_size
         for slice_ind in tqdm.trange(len(obj_data), desc='making GAIA masks', ncols=79):
             scol = obj_data["orig_start_col"][slice_ind, 0]
             srow = obj_data["orig_start_row"][slice_ind, 0]
@@ -217,6 +248,8 @@ def make_mask(
             ]
 
     # then do the slice masks for missing slices
+    # these are formally defined in pixels, not ra-dec, though we could likely
+    # use healsparse convex polygons instead of the pixels
     for slice_ind in tqdm.tqdm(missing_slice_inds, desc='making slice masks', ncols=79):
         scol = obj_data["orig_start_col"][slice_ind, 0]
         srow = obj_data["orig_start_row"][slice_ind, 0]
@@ -233,14 +266,19 @@ def make_mask(
         ] |= MASK_NOSLICE
 
     # now lets flatten to bad pixels so far
+    # this is done to make the next bit of code easier to write
     msk = msk_img != 0
-    x, y = np.meshgrid(np.arange(coadd_dims[0]), np.arange(coadd_dims[1]))
+    x, y = np.meshgrid(np.arange(coadd_dims[1]), np.arange(coadd_dims[0]))
     x = x[msk].ravel()
     y = y[msk].ravel()
     vals = msk_img[msk].ravel()
     ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
 
-    # we do not want to mark masks outside of the unique coadd region
+    # we need to cut out the parts of the mask that are outside of the unique
+    # coadd tile boundaries
+    # this part of the mask will be built by the adjacent tiles
+    # since we have lists of ra/dec/vals, we simply remove values outside of
+    # the boundary
     t0 = time.time()
     print("cutting to the unique tile region...", end="", flush=True)
     msk = in_unique_coadd_tile_region(
@@ -259,16 +297,10 @@ def make_mask(
     dec = dec[msk]
     print("done (%0.2f seconds)" % (time.time() - t0), flush=True)
 
-    # now convert to healsparse
+    # now finally convert to healsparse
     t0 = time.time()
     print("converting mask to healsparse...", end="", flush=True)
-    hs_msk = healsparse.HealSparseMap.make_empty(
-        32, healpix_nisde, np.int32, sentinel=0
-    )
-    nest_inds = hp.ang2pix(
-        healpix_nisde, ra, dec,  nest=True, lonlat=True,
-    )
-    hs_msk.update_values_pix(nest_inds, vals, nest=True, operation='or')
+    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde)
     print("done (%0.2f seconds)" % (time.time() - t0), flush=True)
 
     return hs_msk
