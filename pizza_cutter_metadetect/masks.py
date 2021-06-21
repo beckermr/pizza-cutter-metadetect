@@ -1,6 +1,5 @@
 import healsparse
 import numpy as np
-import healpy as hp
 import tqdm
 import time
 
