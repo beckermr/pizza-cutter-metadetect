@@ -154,9 +154,9 @@ def test_convert_ra_dec_vals_to_healsparse():
     ra = np.array([10, 20, 50, 10])
     dec = np.array([0, 65, 47, 0])
     vals = np.array([2**0, 2**2, 2**3, 2**1], dtype=np.int32)
-    healpix_nisde = 4096
+    healpix_nside = 4096
 
-    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde)
+    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nside)
 
     assert np.array_equal(
         hs_msk.get_values_pos(ra, dec),

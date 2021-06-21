@@ -121,11 +121,11 @@ def get_slice_bounds(
     }
 
 
-def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde):
+def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nside):
     hs_msk = healsparse.HealSparseMap.make_empty(
-        32, healpix_nisde, np.int32, sentinel=0
+        32, healpix_nside, np.int32, sentinel=0
     )
-    hs_msk.update_values_pos(ra, dec, vals, lonlat=True, nest=True, operation='or')
+    hs_msk.update_values_pos(ra, dec, vals, operation='or')
     return hs_msk
 
 
@@ -209,7 +209,7 @@ def make_mask(
     coadd_dims,
     info,
     gaia_stars=None,
-    healpix_nisde=131072,
+    healpix_nside=131072,
 ):
     """Make the healsparse mask indicating where measurements were made.
 
@@ -243,7 +243,7 @@ def make_mask(
     gaia_stars : structured numpy array, optional
         The GAIA star data indicating where the GAIA star mask holes are. The default
         of None will result in no GAIA star mask holes.
-    healpix_nisde : int, optional
+    healpix_nside : int, optional
         The nisde of the healsparse mask. The default is 131072.
 
     Returns
@@ -331,7 +331,7 @@ def make_mask(
     # now finally convert to healsparse
     t0 = time.time()
     print("converting mask to healsparse...", end="", flush=True)
-    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde)
+    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nside)
     print("done (%0.2f seconds)" % (time.time() - t0), flush=True)
 
     return hs_msk
