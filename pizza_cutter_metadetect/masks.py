@@ -123,21 +123,10 @@ def get_slice_bounds(
 
 
 def _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nisde):
-    nest_inds = hp.ang2pix(
-        healpix_nisde, ra, dec,  nest=True, lonlat=True,
-    )
-    # this bit of code accounts for duplicate indicies in nest_inds which
-    # healsparse could not handle initially
-    # it can be removed eventually once healsparse is fixed
-    uinds, iindex = np.unique(nest_inds, return_inverse=True)
-    uvals = np.zeros_like(uinds, dtype=np.int32)
-    np.bitwise_or.at(uvals, iindex, vals)
-
-    # now set the map
     hs_msk = healsparse.HealSparseMap.make_empty(
         32, healpix_nisde, np.int32, sentinel=0
     )
-    hs_msk.update_values_pix(uinds, uvals, nest=True, operation='or')
+    hs_msk.update_values_pos(ra, dec, vals, lonlat=True, nest=True, operation='or')
     return hs_msk
 
 
