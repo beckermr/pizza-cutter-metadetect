@@ -4,7 +4,6 @@ import pytest
 from ..masks import (
     in_unique_coadd_tile_region,
     get_slice_bounds,
-    _convert_ra_dec_vals_to_healsparse,
     _mask_one_gaia_stars,
     _mask_one_slice,
     MASK_GAIA_STAR,
@@ -148,20 +147,6 @@ def test_get_slice_bounds(col, row, truth):
         coadd_dims=(1000, 1000),
     )
     assert res == truth
-
-
-def test_convert_ra_dec_vals_to_healsparse():
-    ra = np.array([10, 20, 50, 10])
-    dec = np.array([0, 65, 47, 0])
-    vals = np.array([2**0, 2**2, 2**3, 2**1], dtype=np.int32)
-    healpix_nside = 4096
-
-    hs_msk = _convert_ra_dec_vals_to_healsparse(ra, dec, vals, healpix_nside)
-
-    assert np.array_equal(
-        hs_msk.get_values_pos(ra, dec),
-        np.array([2**0 | 2**1, 2**2, 2**3, 2**0 | 2**1], dtype=np.int32),
-    )
 
 
 def test_mask_one_gaia_stars(show=False):

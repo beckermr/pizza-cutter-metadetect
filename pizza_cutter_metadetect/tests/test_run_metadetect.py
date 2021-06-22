@@ -8,6 +8,7 @@ import numpy as np
 from esutil.wcsutil import WCS
 
 from ..run_metadetect import _make_output_array, _do_metadetect
+from ..masks import MASK_SLICEDUPE
 
 
 CONFIG = {
@@ -293,7 +294,7 @@ def test_make_output_array():
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
     # from np.arange(10) + 13 = [13, 14, 15, ...]
-    assert np.array_equal(arr["duplicate_flags"], [0] * 2 + [4] * 8)
+    assert np.array_equal(arr["duplicate_flags"], [0] * 2 + [MASK_SLICEDUPE] * 8)
 
     assert np.array_equal(arr['a'], data['a'])
     assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])
@@ -413,7 +414,7 @@ def test_make_output_array_bounds(
         & (data['sx_col_noshear'] >= min_col)
         & (data['sx_col_noshear'] < max_col)
     )
-    flags = np.zeros(21, dtype=np.int32) + 4
+    flags = np.zeros(21, dtype=np.int32) + MASK_SLICEDUPE
     flags[msk] = 0
     assert np.array_equal(arr["duplicate_flags"], flags)
 
