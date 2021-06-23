@@ -1,7 +1,6 @@
 import healsparse
 import numpy as np
 import tqdm
-import time
 
 from .gaia_stars import make_gaia_mask
 
@@ -71,41 +70,6 @@ def in_unique_coadd_tile_region(
     return in_coadd
 
 
-def truncate_to_unique_coadd_tile_region(
-    *, ra, dec, crossra0, udecmin, udecmax, uramin, uramax,
-):
-    """Truncate a set of ra,dec values to the unique tile region.
-
-    Parameters
-    ----------
-    ra : array-like
-        The array of ra values for the objects.
-    dec : array-like
-        The array of dec values for the objects.
-    crossra0 : str
-        A string that is either 'Y' or 'N' indicating if the tile cross ra=0.
-    udecmin, udecmax, uramin, uramax : float
-        The min and max values for ra and dec indicating the unique coadd tile
-        region.
-
-    Returns
-    -------
-    rat, dect : array-like
-        The truncated values.
-    """
-    rat = ra.copy()
-    rat = _wrap_ra(rat)
-    if crossra0 == 'Y':
-        uramin = uramin - 360.0
-        msk = rat > 180.0
-        rat[msk] -= 360
-    rat = np.clip(rat, uramin, uramax)
-    rat = _wrap_ra(rat)
-    dect = np.clip(dec, udecmin, udecmax)
-
-    return rat, dect
-
-
 def get_slice_bounds(
     *, orig_start_col, orig_start_row, central_size, buffer_size, coadd_dims,
 ):
@@ -161,76 +125,6 @@ def get_slice_bounds(
         "min_col": min_slice_col,
         "max_col": max_slice_col,
     }
-
-
-def _build_base_tile_mask(*, wcs, position_offset, coadd_dims, healpix_nside, info):
-    dpix = 250
-
-    geom_prims = []
-
-    n_x = coadd_dims[1] // dpix
-    if n_x * dpix < coadd_dims[1]:
-        n_x += 1
-
-    n_y = coadd_dims[0] // dpix
-    if n_y * dpix < coadd_dims[0]:
-        n_y += 1
-
-    for xind in tqdm.trange(n_x, ncols=79, desc="building base tile mask"):
-        xstart = xind * dpix
-        xend = xstart + dpix
-        if xend >= coadd_dims[1]:
-            xend = coadd_dims[1]-1
-        xlocs = np.array([
-            xstart, xend, xend, xstart
-        ])
-
-        for yind in range(n_y):
-            ystart = yind * dpix
-            yend = ystart + dpix
-            if yend >= coadd_dims[0]:
-                yend = coadd_dims[0]-1
-            ylocs = np.array([
-                ystart, ystart, yend, yend,
-            ])
-
-            ra, dec = wcs.image2sky(xlocs + position_offset, ylocs + position_offset)
-
-            # skip polygons outside the unique tile bounds
-            if not np.any(in_unique_coadd_tile_region(
-                ra=ra,
-                dec=dec,
-                crossra0=info['crossra0'],
-                udecmin=info['udecmin'],
-                udecmax=info['udecmax'],
-                uramin=info['uramin'],
-                uramax=info['uramax'],
-            )):
-                continue
-
-            ra, dec = truncate_to_unique_coadd_tile_region(
-                ra=ra,
-                dec=dec,
-                crossra0=info['crossra0'],
-                udecmin=info['udecmin'],
-                udecmax=info['udecmax'],
-                uramin=info['uramin'],
-                uramax=info['uramax'],
-            )
-            geom_prims.append(
-                healsparse.Polygon(
-                    ra=ra,
-                    dec=dec,
-                    value=MASK_INTILE,
-                )
-            )
-
-    hs_msk_prims = healsparse.HealSparseMap.make_empty(
-        32, healpix_nside, np.int32, sentinel=0
-    )
-    healsparse.realize_geom(geom_prims, hs_msk_prims)
-
-    return hs_msk_prims
 
 
 def _mask_one_gaia_stars(
@@ -356,8 +250,9 @@ def make_mask(
         The healsparse boolean map indicating what areas were masked and why. The
         possible flag values are
 
-            MASK_NOSLICE = 2**0 - indicates no data for a given coadd slice
-            MASK_GAIA_STAR = 2**1 - indicates regions where a GAIA star hole exists
+            MASK_INTILE    (2**0) - indicates data is inside the unique tile boundaries
+            MASK_NOSLICE   (2**1) - indicates no data for a given coadd slice
+            MASK_GAIA_STAR (2**2) - indicates regions where a GAIA star hole exists
     """
     # We will build a coadd image of the mask bits and then convert them to
     # healsparse at the end. We do things this way for a few reasons.
@@ -375,7 +270,9 @@ def make_mask(
     # apply a 90 degree rotation to the mask holes within each slice
     # this is done in the GAIA masking functions we have and so we use those here
     if gaia_stars is not None:
-        for slice_ind in tqdm.trange(len(obj_data), desc='making GAIA masks', ncols=79):
+        for slice_ind in tqdm.trange(
+            len(obj_data), desc='making GAIA masks', ncols=120
+        ):
             _mask_one_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
@@ -390,7 +287,9 @@ def make_mask(
     # then do the slice masks for missing slices
     # these are formally defined in pixels, not ra-dec, though we could likely
     # use healsparse convex polygons instead of the pixels
-    for slice_ind in tqdm.tqdm(missing_slice_inds, desc='making slice masks', ncols=79):
+    for slice_ind in tqdm.tqdm(
+        missing_slice_inds, desc='making slice masks', ncols=120
+    ):
         _mask_one_slice(
             buffer_size=buffer_size,
             central_size=central_size,
@@ -400,51 +299,38 @@ def make_mask(
             srow=obj_data["orig_start_row"][slice_ind, 0],
         )
 
-    # now lets flatten to bad pixels so far
-    # this is done to make the next bit of code easier to write
-    msk = msk_img != 0
-    x, y = np.meshgrid(np.arange(coadd_dims[1]), np.arange(coadd_dims[0]))
-    x = x[msk].ravel()
-    y = y[msk].ravel()
-    vals = msk_img[msk].ravel()
-    ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
-
     # we need to cut out the parts of the mask that are outside of the unique
     # coadd tile boundaries
     # this part of the mask will be built by the adjacent tiles
-    # since we have lists of ra/dec/vals, we simply remove values outside of
-    # the boundary
-    t0 = time.time()
-    print("cutting to the unique tile region...", end="", flush=True)
-    msk = in_unique_coadd_tile_region(
-        ra=ra,
-        dec=dec,
-        crossra0=info['crossra0'],
-        udecmin=info['udecmin'],
-        udecmax=info['udecmax'],
-        uramin=info['uramin'],
-        uramax=info['uramax'],
+    # to do this, we set a flag for pixels inside the boundaries
+    # since we need to convert to ra-dec for the cut and ra-dec is needed for
+    # making the healsparse files, we do that at the same time as well.
+    hs_msk = healsparse.HealSparseMap.make_empty(
+        128, healpix_nside, np.int32, sentinel=0
     )
-    x = x[msk]
-    y = y[msk]
-    vals = vals[msk]
-    ra = ra[msk]
-    dec = dec[msk]
-    print("done (%0.2f seconds)" % (time.time() - t0), flush=True)
+    for yind in tqdm.trange(
+        coadd_dims[0],
+        desc='cutting tile buffers and making healsparse',
+        ncols=120,
+    ):
+        y = np.zeros(coadd_dims[1]) + yind
+        x = np.arange(coadd_dims[1])
+        ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+        umsk = in_unique_coadd_tile_region(
+            ra=ra,
+            dec=dec,
+            crossra0=info['crossra0'],
+            udecmin=info['udecmin'],
+            udecmax=info['udecmax'],
+            uramin=info['uramin'],
+            uramax=info['uramax'],
+        )
+        msk_img[yind, umsk] |= MASK_INTILE
+        # set the mask to zero outside the unique tile bounds
+        msk_img[yind, ~umsk] = 0
 
-    # build the base mask of the unique tile region
-    hs_msk = _build_base_tile_mask(
-        wcs=wcs,
-        position_offset=position_offset,
-        coadd_dims=coadd_dims,
-        healpix_nside=healpix_nside,
-        info=info,
-    )
-
-    # now finally convert to healsparse
-    t0 = time.time()
-    print("converting mask to healsparse...", end="", flush=True)
-    hs_msk.update_values_pos(ra, dec, vals, operation='or')
-    print("done (%0.2f seconds)" % (time.time() - t0), flush=True)
+        # now add to healsparse - keep only non-zero entries
+        msk = msk_img[yind, :] != 0
+        hs_msk.update_values_pos(ra[msk], dec[msk], msk_img[yind, msk], operation='or')
 
     return hs_msk
