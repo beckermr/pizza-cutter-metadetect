@@ -12,15 +12,16 @@ MASK_TILEDUPE = 2**4
 
 
 def _wrap_ra(ra):
-    msk = (ra < 0) & np.isfinite(ra)
+    fnt = np.isfinite(ra)
+    msk = (ra < 0) & fnt
     while np.any(msk):
         ra[msk] = ra[msk] + 360.0
-        msk = (ra < 0) & np.isfinite(ra)
+        msk = (ra < 0) & fnt
 
-    msk = (ra > 360) & np.isfinite(ra)
+    msk = (ra > 360) & fnt
     while np.any(msk):
         ra[msk] = ra[msk] - 360.0
-        msk = (ra > 360) & np.isfinite(ra)
+        msk = (ra > 360) & fnt
 
     return ra
 

@@ -8,7 +8,23 @@ from ..masks import (
     _mask_one_slice,
     MASK_GAIA_STAR,
     MASK_NOSLICE,
+    _wrap_ra,
 )
+
+
+def test_wrap_ra():
+    dra = np.array([-350, -170, 0, 350, 350 + 360*10, -350 - 360*10])
+    ans = np.array([10, 360-170, 0, 350, 350, 10])
+    assert np.allclose(_wrap_ra(dra), ans)
+
+
+def test_wrap_dra_array_nan_inf():
+    dra = np.array([np.nan, np.inf, -350, -170, 0, 350, 350 + 360*10, -350 - 360*10])
+    ans = np.array([np.nan, np.inf, 10, 360-170, 0, 350, 350, 10])
+    msk = np.isfinite(dra)
+    assert np.allclose(_wrap_ra(dra[msk]), ans[msk])
+    assert np.isnan(ans[0])
+    assert np.isinf(ans[1])
 
 
 def test_in_unique_coadd_tile_region():
