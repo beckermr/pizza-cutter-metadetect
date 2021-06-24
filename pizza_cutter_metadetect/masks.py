@@ -128,7 +128,7 @@ def get_slice_bounds(
     }
 
 
-def _mask_one_gaia_stars(
+def _mask_one_slice_for_gaia_stars(
     *,
     buffer_size,
     central_size,
@@ -174,7 +174,7 @@ def _mask_one_gaia_stars(
     ]
 
 
-def _mask_one_slice(
+def _mask_one_slice_for_missing_data(
     *,
     buffer_size,
     central_size,
@@ -247,6 +247,8 @@ def make_mask(
 
     Returns
     -------
+    msk_img : array-like
+        An image containing the mask bits.
     hs_msk : healsparse map
         The healsparse boolean map indicating what areas were masked and why. The
         possible flag values are
@@ -274,7 +276,7 @@ def make_mask(
         for slice_ind in tqdm.trange(
             len(obj_data), desc='making GAIA masks', ncols=120
         ):
-            _mask_one_gaia_stars(
+            _mask_one_slice_for_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
                 gaia_stars=gaia_stars,
@@ -291,7 +293,7 @@ def make_mask(
     for slice_ind in tqdm.tqdm(
         missing_slice_inds, desc='making slice masks', ncols=120
     ):
-        _mask_one_slice(
+        _mask_one_slice_for_missing_data(
             buffer_size=buffer_size,
             central_size=central_size,
             coadd_dims=coadd_dims,
@@ -334,4 +336,4 @@ def make_mask(
         msk = msk_img[yind, :] != 0
         hs_msk.update_values_pos(ra[msk], dec[msk], msk_img[yind, msk], operation='or')
 
-    return hs_msk
+    return msk_img, hs_msk

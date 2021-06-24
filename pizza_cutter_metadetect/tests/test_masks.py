@@ -4,8 +4,8 @@ import pytest
 from ..masks import (
     in_unique_coadd_tile_region,
     get_slice_bounds,
-    _mask_one_gaia_stars,
-    _mask_one_slice,
+    _mask_one_slice_for_gaia_stars,
+    _mask_one_slice_for_missing_data,
     MASK_GAIA_STAR,
     MASK_NOSLICE,
     _wrap_ra,
@@ -176,7 +176,7 @@ def test_mask_one_gaia_stars(show=False):
     )
 
     msk_img = np.zeros(coadd_dims, dtype=np.int32)
-    _mask_one_gaia_stars(
+    _mask_one_slice_for_gaia_stars(
         buffer_size=buffer_size,
         central_size=central_size,
         gaia_stars=gaia_stars,
@@ -200,7 +200,7 @@ def test_mask_one_gaia_stars(show=False):
         pdb.set_trace()
 
     msk_img = np.zeros(coadd_dims, dtype=np.int32)
-    _mask_one_gaia_stars(
+    _mask_one_slice_for_gaia_stars(
         buffer_size=buffer_size,
         central_size=central_size,
         gaia_stars=gaia_stars,
@@ -231,7 +231,7 @@ def test_mask_one_slice():
 
     msk_img = np.zeros(coadd_dims, dtype=np.int32)
 
-    _mask_one_slice(
+    _mask_one_slice_for_missing_data(
         buffer_size=buffer_size,
         central_size=central_size,
         coadd_dims=coadd_dims,
@@ -243,7 +243,7 @@ def test_mask_one_slice():
     assert np.all((msk_img[0:15, 20:30] & MASK_NOSLICE) != 0)
     assert np.all((msk_img[15:, 30:] & MASK_NOSLICE) == 0)
 
-    _mask_one_slice(
+    _mask_one_slice_for_missing_data(
         buffer_size=buffer_size,
         central_size=central_size,
         coadd_dims=coadd_dims,

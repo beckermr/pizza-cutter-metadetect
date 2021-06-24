@@ -554,7 +554,7 @@ def run_metadetect(
     )
 
     # make the masks
-    hs_msk = make_mask(
+    msk_img, hs_msk = make_mask(
         preconfig=preconfig,
         gaia_stars=gaia_stars,
         missing_slice_inds=missing_slice_inds,
@@ -586,7 +586,17 @@ def run_metadetect(
     )
 
     if output is not None:
-        fitsio.write(output_file, output, clobber=True)
+        with fitsio.FITS(output_file, "rw", clobber=True) as fits:
+            fits.write(output)
+            fits.create_image_hdu(
+                img=None,
+                dtype="i4",
+                dims=msk_img.shape,
+                extname="msk",
+                header=pz_config["fpack_pars"])
+            fits["msk"].write_keys(pz_config["fpack_pars"], clean=False)
+            fits["msk"].write(msk_img)
+
         hs_msk.write(mask_output_file, clobber=True)
     else:
         print("WARNING: no output produced by metadetect!", flush=True)
