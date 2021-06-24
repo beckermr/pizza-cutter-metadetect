@@ -4,6 +4,7 @@ import time
 import datetime
 import logging
 import copy
+import subprocess
 
 import yaml
 import joblib
@@ -81,12 +82,12 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
         part = 0
 
     if part is not None:
-        tail = 'part%04d.fits' % part
+        tail = 'part%04d.fits.fz' % part
     else:
         start, end_plus_one, num = split_range(meds_range)
         end = end_plus_one - 1
 
-        tail = 'range%04d-%04d.fits' % (start, end)
+        tail = 'range%04d-%04d.fits.fz' % (start, end)
 
     parts.append(tail)
 
@@ -586,7 +587,7 @@ def run_metadetect(
     )
 
     if output is not None:
-        with fitsio.FITS(output_file, "rw", clobber=True) as fits:
+        with fitsio.FITS(output_file[:-len(".fz")], "rw", clobber=True) as fits:
             fits.write(output)
             fits.create_image_hdu(
                 img=None,
@@ -596,6 +597,23 @@ def run_metadetect(
                 header=pz_config["fpack_pars"])
             fits["msk"].write_keys(pz_config["fpack_pars"], clean=False)
             fits["msk"].write(msk_img)
+
+        # fpack it
+        try:
+            os.remove(output_file)
+        except FileNotFoundError:
+            pass
+        cmd = 'fpack %s' % output_file[:-len(".fz")]
+        print("fpack cmd:", cmd, flush=True)
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except Exception:
+            pass
+        else:
+            try:
+                os.remove(output_file[:-len(".fz")])
+            except Exception:
+                pass
 
         hs_msk.write(mask_output_file, clobber=True)
     else:

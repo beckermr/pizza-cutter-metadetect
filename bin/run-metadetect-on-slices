@@ -102,8 +102,13 @@ def _process(
             shear_bands=shear_bands,
         )
 
-    if output_path.endswith(".fits"):
+    if output_path.endswith(".fits.fz"):
         filename = output_path
+    elif output_path.endswith(".fits"):
+        raise RuntimeError(
+            "You must pass a path that ends with '.fits.fz' in order to specify the "
+            "exact output location."
+        )
     else:
         filename = make_output_filename(
             output_path,
@@ -112,7 +117,7 @@ def _process(
             part,
             meds_range,
         )
-    mask_filename = filename[:-len(".fits")] + "-healsparse-mask.hs"
+    mask_filename = filename[:-len(".fits.fz")] + "-healsparse-mask.hs"
 
     makedir_fromfile(filename)
     makedir_fromfile(mask_filename)
