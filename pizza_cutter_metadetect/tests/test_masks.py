@@ -308,11 +308,17 @@ def test_make_mask(coadd_image_data):
         import pdb
         pdb.set_trace()
 
+    hs_vals, hs_ra, hs_dec = hs_msk.valid_pixels_pos(return_pixels=True)
+    hs_vals = hs_msk[hs_vals]
+
     # basic tests
     # we have some bits set
     assert np.any((msk_img & MASK_INTILE) != 0)
     assert np.any((msk_img & MASK_NOSLICE) != 0)
     assert np.any((msk_img & MASK_GAIA_STAR) != 0)
+    assert np.any((hs_vals & MASK_INTILE) != 0)
+    assert np.any((hs_vals & MASK_NOSLICE) != 0)
+    assert np.any((hs_vals & MASK_GAIA_STAR) != 0)
 
     # edges are all zero
     assert np.all(msk_img[:, 0] == 0)
@@ -320,14 +326,43 @@ def test_make_mask(coadd_image_data):
     assert np.all(msk_img[0, :] == 0)
     assert np.all(msk_img[-1, :] == 0)
 
+    for x, y in [
+        (0, np.arange(coadd_dims[0])),
+        (coadd_dims[1]-1, np.arange(coadd_dims[0])),
+        (np.arange(coadd_dims[1]), 0),
+        (np.arange(coadd_dims[1]), coadd_dims[0]-1),
+    ]:
+        ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+        _vals = hs_msk.get_values_pos(ra, dec)
+        assert np.all(_vals == 0)
+
     # most of the coadd is fine
     assert np.mean((msk_img & MASK_INTILE) != 0) > 0.80
+    assert np.mean((hs_vals & MASK_INTILE) != 0) > 0.80
 
     # slice ind at 1, 1 is fully masked except for edges
     assert np.all((msk_img[220:250, 220:250] & MASK_NOSLICE) != 0)
+    x, y = np.meshgrid(np.arange(220, 250), np.arange(220, 250))
+    x = x.ravel()
+    y = y.ravel()
+    ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+    _vals = hs_msk.get_values_pos(ra, dec)
+    assert np.all((_vals & MASK_NOSLICE) != 0)
 
     # there is a star so let's check that
     assert np.all((msk_img[260:290, 260:290] & MASK_GAIA_STAR) != 0)
+    x, y = np.meshgrid(np.arange(260, 290), np.arange(260, 290))
+    x = x.ravel()
+    y = y.ravel()
+    ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+    _vals = hs_msk.get_values_pos(ra, dec)
+    assert np.all((_vals & MASK_GAIA_STAR) != 0)
 
     # make sure the buffer is ok
     assert np.all(msk_img[0:20, 0:20] == 0)
+    x, y = np.meshgrid(np.arange(20), np.arange(20))
+    x = x.ravel()
+    y = y.ravel()
+    ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+    _vals = hs_msk.get_values_pos(ra, dec)
+    assert np.all(_vals == 0)
