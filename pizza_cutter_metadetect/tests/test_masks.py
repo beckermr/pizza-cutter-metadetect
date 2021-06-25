@@ -1,14 +1,18 @@
 import numpy as np
 import pytest
 
+from pizza_cutter.slice_utils.locate import build_slice_locations
+
 from ..masks import (
     in_unique_coadd_tile_region,
     get_slice_bounds,
     _mask_one_slice_for_gaia_stars,
     _mask_one_slice_for_missing_data,
+    MASK_INTILE,
     MASK_GAIA_STAR,
     MASK_NOSLICE,
     _wrap_ra,
+    make_mask,
 )
 
 
@@ -254,3 +258,76 @@ def test_mask_one_slice():
 
     assert np.all((msk_img[20:30, 20:30] & MASK_NOSLICE) != 0)
     assert np.all((msk_img[30:, 30:] & MASK_NOSLICE) == 0)
+
+
+def test_make_mask(coadd_image_data):
+    preconfig = {
+        "gaia_star_masks": {"symmetrize": False},
+    }
+    missing_slice_inds = [100, 768]
+    central_size = 100
+    buffer_size = 50
+    wcs = coadd_image_data["eu_wcs"]
+    position_offset = coadd_image_data["position_offset"]
+    coadd_dims = (10000, 10000)
+    info = coadd_image_data
+    gaia_stars = np.array(
+        [(275, 275, 100)],
+        dtype=[("x", "f8"), ("y", "f8"), ("radius_pixels", "f8")],
+    )
+    _, _, srow, scol = build_slice_locations(
+        central_size=central_size,
+        buffer_size=buffer_size,
+        image_width=coadd_dims[0],
+    )
+    obj_data = np.zeros(
+        srow.shape[0],
+        dtype=[('orig_start_row', 'i4', (2,)), ('orig_start_col', 'i4', (2,))]
+    )
+    obj_data["orig_start_row"][:, 0] = srow
+    obj_data["orig_start_col"][:, 0] = scol
+
+    msk_img, hs_msk = make_mask(
+        preconfig=preconfig,
+        missing_slice_inds=missing_slice_inds,
+        obj_data=obj_data,
+        central_size=central_size,
+        buffer_size=buffer_size,
+        wcs=wcs,
+        position_offset=position_offset,
+        coadd_dims=coadd_dims,
+        info=info,
+        gaia_stars=gaia_stars,
+        healpix_nside=131072,
+    )
+
+    if False:
+        import matplotlib.pyplot as plt
+        fig, axs = plt.subplots()
+        axs.imshow(msk_img[:500, :500])
+        import pdb
+        pdb.set_trace()
+
+    # basic tests
+    # we have some bits set
+    assert np.any((msk_img & MASK_INTILE) != 0)
+    assert np.any((msk_img & MASK_NOSLICE) != 0)
+    assert np.any((msk_img & MASK_GAIA_STAR) != 0)
+
+    # edges are all zero
+    assert np.all(msk_img[:, 0] == 0)
+    assert np.all(msk_img[:, -1] == 0)
+    assert np.all(msk_img[0, :] == 0)
+    assert np.all(msk_img[-1, :] == 0)
+
+    # most of the coadd is fine
+    assert np.mean((msk_img & MASK_INTILE) != 0) > 0.80
+
+    # slice ind at 1, 1 is fully masked except for edges
+    assert np.all((msk_img[220:250, 220:250] & MASK_NOSLICE) != 0)
+
+    # there is a star so let's check that
+    assert np.all((msk_img[260:290, 260:290] & MASK_GAIA_STAR) != 0)
+
+    # make sure the buffer is ok
+    assert np.all(msk_img[0:20, 0:20] == 0)
