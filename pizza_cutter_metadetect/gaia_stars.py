@@ -5,7 +5,12 @@ from pizza_cutter.des_pizza_cutter import (
     GAIA_STARS_EXTNAME, BMASK_GAIA_STAR, BMASK_SPLINE_INTERP,
 )
 from pizza_cutter.slice_utils.symmetrize import symmetrize_bmask
-from pizza_cutter.slice_utils.interpolate import _grid_interp
+try:
+    from pizza_cutter.slice_utils.interpolate import interpolate_image_at_mask
+except ImportError:
+    # older versions had an internal api - shim for now but remove this later
+    from pizza_cutter.slice_utils.interpolate import \
+        _grid_interp as interpolate_image_at_mask
 
 
 def load_gaia_stars(
@@ -85,10 +90,10 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
                         obs.mfrac[wbad] = 1.0
                     obs.weight[wbad] = 0.0
 
-                    interp_image = _grid_interp(
+                    interp_image = interpolate_image_at_mask(
                         image=obs.image, bad_msk=bad_logic, maxfrac=1.0,
                     )
-                    interp_noise = _grid_interp(
+                    interp_noise = interpolate_image_at_mask(
                         image=obs.noise, bad_msk=bad_logic, maxfrac=1.0,
                     )
                     if interp_image is None or interp_noise is None:
