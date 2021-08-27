@@ -294,7 +294,7 @@ def test_make_output_array():
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
     # from np.arange(10) + 13 = [13, 14, 15, ...]
-    assert np.array_equal(arr["duplicate_flags"], [0] * 2 + [MASK_SLICEDUPE] * 8)
+    assert np.array_equal(arr["mask_flags"], [0] * 2 + [MASK_SLICEDUPE] * 8)
 
     assert np.array_equal(arr['a'], data['a'])
     assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])
@@ -416,7 +416,7 @@ def test_make_output_array_bounds(
     )
     flags = np.zeros(21, dtype=np.int32) + MASK_SLICEDUPE
     flags[msk] = 0
-    assert np.array_equal(arr["duplicate_flags"], flags)
+    assert np.array_equal(arr["mask_flags"], flags)
 
     assert np.array_equal(arr['a'], data['a'])
     assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])

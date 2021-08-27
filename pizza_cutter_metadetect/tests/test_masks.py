@@ -262,7 +262,7 @@ def test_mask_one_slice():
 
 def test_make_mask(coadd_image_data):
     preconfig = {
-        "gaia_star_masks": {"symmetrize": False},
+        "gaia_star_masks": {"symmetrize": False, "mask_expand_rad": 0},
     }
     missing_slice_inds = [100, 768]
     central_size = 100

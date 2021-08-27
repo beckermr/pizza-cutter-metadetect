@@ -4,6 +4,10 @@ import esutil as eu
 from pizza_cutter.des_pizza_cutter import (
     GAIA_STARS_EXTNAME, BMASK_GAIA_STAR, BMASK_SPLINE_INTERP,
 )
+try:
+    from pizza_cutter.des_pizza_cutter import BMASK_EXPAND_GAIA_STAR
+except ImportError:
+    BMASK_EXPAND_GAIA_STAR = 2**24
 from pizza_cutter.slice_utils.symmetrize import symmetrize_bmask
 try:
     from pizza_cutter.slice_utils.interpolate import interpolate_image_at_mask
@@ -63,6 +67,35 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
         A dictionary of config parameters.
     """
 
+    if 'interp' in config and 'apodize' not in config:
+        _mask_gaia_stars_interp(mbobs, gaia_stars, config)
+    elif 'apodize' in config and 'interp' not in config:
+        pass
+        # _mask_gaia_stars_apodize(mbobs, gaia_stars, config)
+    elif 'interp' in config and 'apodize' in config:
+        raise RuntimeError(
+            "Can only do one of 'interp' or 'apodize' for handling GAIA stars!"
+        )
+
+    if config["mask_expand_rad"] > 0:
+        expanded_gaia_stars = gaia_stars.copy()
+        expanded_gaia_stars['radius_pixels'] += config['mask_expand_rad']
+        gaia_bmask = make_gaia_mask(
+            expanded_gaia_stars,
+            dims=mbobs[0][0].ormask.shape,
+            start_row=mbobs[0][0].meta['orig_start_row'],
+            start_col=mbobs[0][0].meta['orig_start_col'],
+            symmetrize=config['symmetrize'],
+            flag=BMASK_EXPAND_GAIA_STAR,
+        )
+        for obslist in mbobs:
+            for obs in obslist:
+                # the pixels list will be reset upon exiting
+                with obs.writeable():
+                    obs.bmask |= gaia_bmask
+
+
+def _mask_gaia_stars_interp(mbobs, gaia_stars, config):
     # masking is same for all, just take the first
     obs0 = mbobs[0][0]
     ormask = obs0.ormask
@@ -92,9 +125,11 @@ def mask_gaia_stars(mbobs, gaia_stars, config):
 
                     interp_image = interpolate_image_at_mask(
                         image=obs.image, bad_msk=bad_logic, maxfrac=1.0,
+                        **config["interp"],
                     )
                     interp_noise = interpolate_image_at_mask(
                         image=obs.noise, bad_msk=bad_logic, maxfrac=1.0,
+                        **config["interp"],
                     )
                     if interp_image is None or interp_noise is None:
                         obs.bmask |= BMASK_GAIA_STAR
@@ -116,6 +151,7 @@ def make_gaia_mask(
     start_row,
     start_col,
     symmetrize,
+    flag=BMASK_GAIA_STAR,
 ):
     """
     mask gaia stars, setting a bit in the bmask, interpolating image and noise,
@@ -134,6 +170,8 @@ def make_gaia_mask(
         Column in original larger image frame corresponding to col=0
     symmetrize: bool
         If True, symmetrize the mask.
+    flag: int, optional
+        The bit flag value to use.
     """
 
     # must be native byte order for numba
@@ -147,7 +185,7 @@ def make_gaia_mask(
         cols=x - start_col,
         radius_pixels=radius_pixels,
         bmask=gaia_bmask,
-        flag=BMASK_GAIA_STAR,
+        flag=flag,
     )
 
     if symmetrize:

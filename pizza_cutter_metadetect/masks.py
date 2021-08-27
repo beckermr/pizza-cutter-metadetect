@@ -273,13 +273,20 @@ def make_mask(
     # apply a 90 degree rotation to the mask holes within each slice
     # this is done in the GAIA masking functions we have and so we use those here
     if gaia_stars is not None:
+        if preconfig["gaia_star_masks"]["mask_expand_rad"] > 0:
+            _gaia_stars = gaia_stars.copy()
+            _gaia_stars['radius_pixels'] += \
+                preconfig["gaia_star_masks"]["mask_expand_rad"]
+        else:
+            _gaia_stars = gaia_stars
+
         for slice_ind in tqdm.trange(
             len(obj_data), desc='making GAIA masks', ncols=120
         ):
             _mask_one_slice_for_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
-                gaia_stars=gaia_stars,
+                gaia_stars=_gaia_stars,
                 symmetrize=preconfig["gaia_star_masks"]["symmetrize"],
                 coadd_dims=coadd_dims,
                 msk_img=msk_img,

@@ -16,10 +16,12 @@ import ngmix
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
 from pizza_cutter.files import expandpath
-from .gaia_stars import load_gaia_stars, mask_gaia_stars
+from .gaia_stars import (
+    load_gaia_stars, mask_gaia_stars, BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR,
+)
 from .masks import (
     make_mask, get_slice_bounds, in_unique_coadd_tile_region,
-    MASK_TILEDUPE, MASK_SLICEDUPE,
+    MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
@@ -114,7 +116,7 @@ def _make_output_dtype(*, old_dt, model):
         ('slice_col', 'f8'),
         ('slice_row_det', 'f8'),
         ('slice_col_det', 'f8'),
-        ('duplicate_flags', 'i4'),
+        ('mask_flags', 'i4'),
     ]
     skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
     mpre = model + '_'
@@ -234,7 +236,7 @@ def _make_output_array(
         & (arr['slice_col'] >= slice_bnds["min_col"])
         & (arr['slice_col'] < slice_bnds["max_col"])
     )
-    arr["duplicate_flags"][~msk] |= MASK_SLICEDUPE
+    arr["mask_flags"][~msk] |= MASK_SLICEDUPE
 
     msk = in_unique_coadd_tile_region(
         ra=arr['ra'],
@@ -245,7 +247,13 @@ def _make_output_array(
         uramin=info['uramin'],
         uramax=info['uramax'],
     )
-    arr["duplicate_flags"][~msk] |= MASK_TILEDUPE
+    arr["mask_flags"][~msk] |= MASK_TILEDUPE
+
+    msk = (
+        ((arr['bmask'] & BMASK_EXPAND_GAIA_STAR) != 0)
+        | ((arr['bmask'] & BMASK_GAIA_STAR) != 0)
+    )
+    arr["mask_flags"][msk] |= MASK_GAIA_STAR
 
     return arr
 
