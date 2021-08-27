@@ -8,7 +8,8 @@ import numpy as np
 from esutil.wcsutil import WCS
 
 from ..run_metadetect import _make_output_array, _do_metadetect
-from ..masks import MASK_SLICEDUPE
+from ..masks import MASK_SLICEDUPE, MASK_GAIA_STAR
+from ..gaia_stars import BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR
 
 
 CONFIG = {
@@ -256,6 +257,7 @@ def test_make_output_array():
         ('a', 'i8'),
         ('wmom_blah', 'f8'),
         ('wmomm_blah', 'f8'),
+        ('bmask', 'i4'),
     ]
     data = np.zeros(10, dtype=dtype)
 
@@ -266,6 +268,7 @@ def test_make_output_array():
     data['a'] = np.arange(10)
     data['wmomm_blah'] = np.arange(10) + 23.5
     data['wmom_blah'] = np.arange(10) + 314234.5
+    data['bmask'] = [BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR] + [0]*8
 
     arr = _make_output_array(
         data=data,
@@ -294,7 +297,10 @@ def test_make_output_array():
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
     # from np.arange(10) + 13 = [13, 14, 15, ...]
-    assert np.array_equal(arr["mask_flags"], [0] * 2 + [MASK_SLICEDUPE] * 8)
+    assert np.array_equal(
+        arr["mask_flags"],
+        [MASK_GAIA_STAR] * 2 + [MASK_SLICEDUPE] * 8,
+    )
 
     assert np.array_equal(arr['a'], data['a'])
     assert np.array_equal(arr['wmom_blah'], data['wmom_blah'])
@@ -373,6 +379,7 @@ def test_make_output_array_bounds(
         ('a', 'i8'),
         ('wmom_blah', 'f8'),
         ('wmomm_blah', 'f8'),
+        ('bmask', 'i4'),
     ]
     data = np.zeros(21, dtype=dtype)
 

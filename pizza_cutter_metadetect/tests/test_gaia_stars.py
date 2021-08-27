@@ -131,7 +131,7 @@ def test_mask_gaia_stars():
         dtype=[('x', 'f8'), ('y', '<f4'), ('radius_pixels', '>f4')]
     )
     dims = (13, 13)
-    config = dict(symmetrize=False, interp={})
+    config = dict(symmetrize=False, interp={}, mask_expand_rad=0)
     mbobs = ngmix.MultiBandObsList()
     rng = np.random.RandomState(seed=seed)
     for _ in range(nband):
@@ -182,7 +182,7 @@ def test_mask_gaia_stars_all():
         dtype=[('x', 'f8'), ('y', '<f4'), ('radius_pixels', '>f4')]
     )
     dims = (13, 13)
-    config = dict(symmetrize=False, interp={})
+    config = dict(symmetrize=False, interp={}, mask_expand_rad=0)
     mbobs = ngmix.MultiBandObsList()
     rng = np.random.RandomState(seed=seed)
     for _ in range(nband):
