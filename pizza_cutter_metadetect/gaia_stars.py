@@ -132,13 +132,11 @@ def _mask_gaia_stars_interp(mbobs, gaia_stars, config):
                         **config["interp"],
                     )
                     if interp_image is None or interp_noise is None:
+                        obs.ignore_zero_weight = False
                         obs.bmask |= BMASK_GAIA_STAR
                         if hasattr(obs, "mfrac"):
                             obs.mfrac[:, :] = 1.0
                         obs.weight[:, :] = 0.0
-                        # this is ok here, but we need to add a way to
-                        # expose this in ngmix
-                        obs._ignore_zero_weight = False
                     else:
                         obs.image = interp_image
                         obs.noise = interp_noise
