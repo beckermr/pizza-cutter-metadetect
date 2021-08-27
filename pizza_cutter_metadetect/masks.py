@@ -341,6 +341,12 @@ def make_mask(
 
         # now add to healsparse - keep only non-zero entries
         msk = msk_img[yind, :] != 0
-        hs_msk.update_values_pos(ra[msk], dec[msk], msk_img[yind, msk], operation='or')
+        if np.any(msk):
+            hs_msk.update_values_pos(
+                ra[msk],
+                dec[msk],
+                msk_img[yind, msk],
+                operation='or',
+            )
 
     return msk_img, hs_msk
