@@ -121,21 +121,28 @@ def _mask_gaia_stars_interp(mbobs, gaia_stars, config):
 
                     if hasattr(obs, "mfrac"):
                         obs.mfrac[wbad] = 1.0
+                    if np.all(bad_logic):
+                        obs.ignore_zero_weight = False
                     obs.weight[wbad] = 0.0
 
-                    interp_image = interpolate_image_at_mask(
-                        image=obs.image, bad_msk=bad_logic, maxfrac=1.0,
-                        **config["interp"],
-                    )
-                    interp_noise = interpolate_image_at_mask(
-                        image=obs.noise, bad_msk=bad_logic, maxfrac=1.0,
-                        **config["interp"],
-                    )
+                    if not np.all(bad_logic):
+                        interp_image = interpolate_image_at_mask(
+                            image=obs.image, bad_msk=bad_logic, maxfrac=1.0,
+                            **config["interp"],
+                        )
+                        interp_noise = interpolate_image_at_mask(
+                            image=obs.noise, bad_msk=bad_logic, maxfrac=1.0,
+                            **config["interp"],
+                        )
+                    else:
+                        interp_image = None
+                        interp_noise = None
+
                     if interp_image is None or interp_noise is None:
-                        obs.ignore_zero_weight = False
                         obs.bmask |= BMASK_GAIA_STAR
                         if hasattr(obs, "mfrac"):
                             obs.mfrac[:, :] = 1.0
+                        obs.ignore_zero_weight = False
                         obs.weight[:, :] = 0.0
                     else:
                         obs.image = interp_image
