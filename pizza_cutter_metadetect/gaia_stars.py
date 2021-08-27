@@ -171,7 +171,7 @@ def make_gaia_mask(
     symmetrize: bool
         If True, symmetrize the mask.
     flag: int, optional
-        The bit flag value to use.
+        The bit flag value to use. Default is BMASK_GAIA_STAR from pizza_cutter.
     """
 
     # must be native byte order for numba
