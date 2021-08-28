@@ -2,19 +2,13 @@ from numba import njit
 import numpy as np
 import esutil as eu
 from pizza_cutter.des_pizza_cutter import (
-    GAIA_STARS_EXTNAME, BMASK_GAIA_STAR, BMASK_SPLINE_INTERP,
+    GAIA_STARS_EXTNAME,
+    BMASK_GAIA_STAR,
+    BMASK_SPLINE_INTERP,
+    BMASK_EXPAND_GAIA_STAR,
 )
-try:
-    from pizza_cutter.des_pizza_cutter import BMASK_EXPAND_GAIA_STAR
-except ImportError:
-    BMASK_EXPAND_GAIA_STAR = 2**24
 from pizza_cutter.slice_utils.symmetrize import symmetrize_bmask
-try:
-    from pizza_cutter.slice_utils.interpolate import interpolate_image_at_mask
-except ImportError:
-    # older versions had an internal api - shim for now but remove this later
-    from pizza_cutter.slice_utils.interpolate import \
-        _grid_interp as interpolate_image_at_mask
+from pizza_cutter.slice_utils.interpolate import interpolate_image_at_mask
 
 
 def load_gaia_stars(
