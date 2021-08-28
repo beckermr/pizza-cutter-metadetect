@@ -260,9 +260,10 @@ def test_mask_one_slice():
     assert np.all((msk_img[30:, 30:] & MASK_NOSLICE) == 0)
 
 
-def test_make_mask(coadd_image_data):
+@pytest.mark.parametrize("msk_exp_rad", [0, 99])
+def test_make_mask(coadd_image_data, msk_exp_rad):
     preconfig = {
-        "gaia_star_masks": {"symmetrize": False, "mask_expand_rad": 0},
+        "gaia_star_masks": {"symmetrize": False, "mask_expand_rad": msk_exp_rad},
     }
     missing_slice_inds = [100, 768]
     central_size = 100
@@ -272,7 +273,7 @@ def test_make_mask(coadd_image_data):
     coadd_dims = (10000, 10000)
     info = coadd_image_data
     gaia_stars = np.array(
-        [(275, 275, 100)],
+        [(275, 275, 100-msk_exp_rad)],
         dtype=[("x", "f8"), ("y", "f8"), ("radius_pixels", "f8")],
     )
     _, _, srow, scol = build_slice_locations(
