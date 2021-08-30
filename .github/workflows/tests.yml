@@ -31,7 +31,8 @@ jobs:
           conda install -y -q \
             flake8 \
             pytest \
-            pytest-xdist
+            pytest-xdist \
+            "numba<0.54.0"
 
       - name: lint
         shell: bash -l {0}
