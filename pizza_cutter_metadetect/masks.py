@@ -142,7 +142,7 @@ def _mask_one_slice_for_gaia_stars(
     # compute the gaia mask for one slice
     slice_dim = buffer_size*2 + central_size
     slice_msk = make_gaia_mask(
-        gaia_stars,
+        gaia_stars=gaia_stars,
         dims=(slice_dim, slice_dim),
         start_row=srow,
         start_col=scol,
@@ -273,13 +273,20 @@ def make_mask(
     # apply a 90 degree rotation to the mask holes within each slice
     # this is done in the GAIA masking functions we have and so we use those here
     if gaia_stars is not None:
+        if preconfig["gaia_star_masks"]["mask_expand_rad"] > 0:
+            _gaia_stars = gaia_stars.copy()
+            _gaia_stars['radius_pixels'] += \
+                preconfig["gaia_star_masks"]["mask_expand_rad"]
+        else:
+            _gaia_stars = gaia_stars
+
         for slice_ind in tqdm.trange(
             len(obj_data), desc='making GAIA masks', ncols=120
         ):
             _mask_one_slice_for_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
-                gaia_stars=gaia_stars,
+                gaia_stars=_gaia_stars,
                 symmetrize=preconfig["gaia_star_masks"]["symmetrize"],
                 coadd_dims=coadd_dims,
                 msk_img=msk_img,
@@ -334,6 +341,12 @@ def make_mask(
 
         # now add to healsparse - keep only non-zero entries
         msk = msk_img[yind, :] != 0
-        hs_msk.update_values_pos(ra[msk], dec[msk], msk_img[yind, msk], operation='or')
+        if np.any(msk):
+            hs_msk.update_values_pos(
+                ra[msk],
+                dec[msk],
+                msk_img[yind, msk],
+                operation='or',
+            )
 
     return msk_img, hs_msk
