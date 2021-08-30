@@ -482,3 +482,4 @@ def test_mask_gaia_stars_apodize_all():
             assert np.all(obs.weight == 0)
             assert np.all((obs.bmask & BMASK_GAIA_STAR) != 0)
             assert np.all(obs.image == 0)
+            assert np.all(obs.noise == 0)
