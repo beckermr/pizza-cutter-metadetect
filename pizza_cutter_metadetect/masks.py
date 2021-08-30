@@ -142,7 +142,7 @@ def _mask_one_slice_for_gaia_stars(
     # compute the gaia mask for one slice
     slice_dim = buffer_size*2 + central_size
     slice_msk = make_gaia_mask(
-        gaia_stars,
+        gaia_stars=gaia_stars,
         dims=(slice_dim, slice_dim),
         start_row=srow,
         start_col=scol,
