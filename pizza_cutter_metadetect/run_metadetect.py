@@ -323,7 +323,7 @@ def _post_process_results(
         dt += _dt
         for mdet_step, data in res.items():
             if data.size > 0:
-                file_id = obj_data['file_id'][i, 0]
+                file_id = max(obj_data['file_id'][i, 0], 0)
                 if file_id in wcs_cache:
                     wcs, position_offset = wcs_cache[file_id]
                 else:
