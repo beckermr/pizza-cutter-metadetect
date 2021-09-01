@@ -551,17 +551,22 @@ def run_metadetect(
 
     # join all the outputs
     meta = multiband_meds.mlist[0].get_meta()
-    try:
-        info = json.loads(multiband_meds.mlist[0]._fits['tile_info'].read().tobytes())
-    except Exception:
-        print(
-            "WARNING: tile info not found! attempting to read from the database!",
-            flush=True,
-        )
-        tilename = json.loads(
-            multiband_meds.mlist[0].get_image_info()['wcs'][0]
-        )['desfname'].split("_")[0]
-        info = get_coaddtile_geom(tilename)
+    if 'tile_info' in meta.dtype.names:
+        info = json.loads(meta["tile_info"][0])
+    else:
+        try:
+            info = json.loads(
+                multiband_meds.mlist[0]._fits['tile_info'].read().tobytes()
+            )
+        except Exception:
+            print(
+                "WARNING: tile info not found! attempting to read from the database!",
+                flush=True,
+            )
+            tilename = json.loads(
+                multiband_meds.mlist[0].get_image_info()['wcs'][0]
+            )['desfname'].split("_")[0]
+            info = get_coaddtile_geom(tilename)
 
     pz_config = yaml.safe_load(meta['config'][0])
     (
