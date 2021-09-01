@@ -100,7 +100,7 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     return fname
 
 
-def _make_output_dtype(*, old_dt, model):
+def _make_output_dtype(*, old_dt, model, filename_len, tilename_len):
     new_dt = [
         ('slice_id', 'i8'),
         ('mdet_step', 'U7'),
@@ -117,6 +117,8 @@ def _make_output_dtype(*, old_dt, model):
         ('slice_row_det', 'f8'),
         ('slice_col_det', 'f8'),
         ('mask_flags', 'i4'),
+        ('filename', 'U%d' % filename_len),
+        ('tilename', 'U%d' % tilename_len),
     ]
     skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
     mpre = model + '_'
@@ -138,7 +140,7 @@ def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info,
+    central_size, coadd_dims, model, info, output_file,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -172,14 +174,22 @@ def _make_output_array(
         with '{model}_' to 'mdet_'.
     info : dict
         Dict of tile geom information for getting detections in the tile boundaries.
+    output_file : str
+        The output filename.
 
     Returns
     -------
     array with new fields
     """
+    filename = os.path.basename(output_file)
+    if filename.endswith(".fz"):
+        filename = filename[:-len(".fz")]
+    tilename = filename.split('_')[0]
     new_dt = _make_output_dtype(
         old_dt=data.dtype.descr,
         model=model,
+        filename_len=len(filename),
+        tilename_len=len(tilename),
     )
     mpre = model + '_'
     arr = np.zeros(data.shape, dtype=new_dt)
@@ -192,6 +202,8 @@ def _make_output_array(
 
     arr['slice_id'] = slice_id
     arr['mdet_step'] = mdet_step
+    arr['filename'] = filename
+    arr['tilename'] = tilename
 
     # we swap names here calling the sheared pos _det
     arr['slice_row'] = data['sx_row_noshear']
@@ -295,7 +307,8 @@ def _get_radec(*,
 
 
 def _post_process_results(
-    *, outputs, obj_data, image_info, buffer_size, central_size, config, info
+    *, outputs, obj_data, image_info, buffer_size, central_size, config, info,
+    output_file,
 ):
     # post process results
     wcs_cache = {}
@@ -310,7 +323,7 @@ def _post_process_results(
         dt += _dt
         for mdet_step, data in res.items():
             if data.size > 0:
-                file_id = obj_data['file_id'][i, 0]
+                file_id = max(obj_data['file_id'][i, 0], 0)
                 if file_id in wcs_cache:
                     wcs, position_offset = wcs_cache[file_id]
                 else:
@@ -320,7 +333,7 @@ def _post_process_results(
 
                 coadd_dims = (wcs.get_naxis()[0], wcs.get_naxis()[1])
                 assert coadd_dims == (10000, 10000), (
-                    "Wrong coadd dims %s computed!" % coadd_dims
+                    "Wrong coadd dims %s computed!" % (coadd_dims,)
                 )
 
                 output.append(_make_output_array(
@@ -336,6 +349,7 @@ def _post_process_results(
                     coadd_dims=coadd_dims,
                     model=config['model'],
                     info=info,
+                    output_file=output_file,
                 ))
 
     if len(output) > 0:
@@ -537,17 +551,22 @@ def run_metadetect(
 
     # join all the outputs
     meta = multiband_meds.mlist[0].get_meta()
-    if 'tile_info' not in meta.dtype.names:
-        print(
-            "WARNING: tile info not found! attempting to read from the database!",
-            flush=True,
-        )
-        tilename = json.loads(
-            multiband_meds.mlist[0].get_image_info()['wcs'][0]
-        )['desfname'].split("_")[0]
-        info = get_coaddtile_geom(tilename)
-    else:
+    if 'tile_info' in meta.dtype.names:
         info = json.loads(meta["tile_info"][0])
+    else:
+        try:
+            info = json.loads(
+                multiband_meds.mlist[0]._fits['tile_info'].read().tobytes()
+            )
+        except Exception:
+            print(
+                "WARNING: tile info not found! attempting to read from the database!",
+                flush=True,
+            )
+            tilename = json.loads(
+                multiband_meds.mlist[0].get_image_info()['wcs'][0]
+            )['desfname'].split("_")[0]
+            info = get_coaddtile_geom(tilename)
 
     pz_config = yaml.safe_load(meta['config'][0])
     (
@@ -560,6 +579,7 @@ def run_metadetect(
         central_size=int(pz_config['coadd']['central_size']),
         config=config,
         info=info,
+        output_file=output_file,
     )
 
     # make the masks
@@ -596,7 +616,7 @@ def run_metadetect(
 
     if output is not None:
         with fitsio.FITS(output_file[:-len(".fz")], "rw", clobber=True) as fits:
-            fits.write(output)
+            fits.write(output, extname="cat")
             fits.create_image_hdu(
                 img=None,
                 dtype="i4",
