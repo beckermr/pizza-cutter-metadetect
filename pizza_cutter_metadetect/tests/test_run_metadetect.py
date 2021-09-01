@@ -370,6 +370,7 @@ def test_make_output_array_bounds(
     position_offset = 2
     slice_id = 11
     mdet_step = 'blah'
+    output_file = "/bdsjd/tname_blah.fits.fz"
 
     dtype = [
         ('sx_row', 'f8'),
@@ -410,10 +411,13 @@ def test_make_output_array_bounds(
             'uramin': 180,
             'uramax': 180,
         },
+        output_file=output_file,
     )
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
+    assert np.all(arr['tilename'] == "tname")
+    assert np.all(arr['filename'] == "tname_blah.fits")
 
     msk = (
         (data['sx_row_noshear'] >= min_row)
