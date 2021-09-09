@@ -50,7 +50,7 @@ def _process(
     if log_level.upper() == "DEBUG":
         verbose = 100
     else:
-        verbose = 10
+        verbose = 75
 
     meds_list = []
     for f in meds_files:
