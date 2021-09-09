@@ -476,6 +476,7 @@ def run_metadetect(
     num=None,
     n_jobs=1,
     shear_bands=None,
+    verbose=100,
 ):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
@@ -500,12 +501,14 @@ def run_metadetect(
     num : int, optional
         The number of entries of the file to process, starting at `start`.
         The default of `None` will process all entries in the file.
-    n_jobs : int
+    n_jobs : int, optional
         The number of jobs to use.
-    shear_bands : list of bool or None
+    shear_bands : list of bool or None, optional
         If not None, this is a list of boolean values indicating if a given
         band is to be used for shear. The length must match the number of MEDS
         files used to make the `multiband_meds`.
+    verbose : int, optional
+        joblib logging level.
     """
     t0 = time.time()
 
@@ -538,7 +541,7 @@ def run_metadetect(
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
         outputs = joblib.Parallel(
-            verbose=100,
+            verbose=verbose,
             n_jobs=n_jobs,
             pre_dispatch='2*n_jobs',
             max_nbytes=None,  # never memmap

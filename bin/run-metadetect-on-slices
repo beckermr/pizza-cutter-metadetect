@@ -47,6 +47,10 @@ def _process(
         logging.getLogger(lib).setLevel(
             getattr(logging, log_level.upper())
         )
+    if log_level.upper() == "DEBUG":
+        verbose = 100
+    else:
+        verbose = 10
 
     meds_list = []
     for f in meds_files:
@@ -100,6 +104,7 @@ def _process(
             num=num,
             n_jobs=n_jobs,
             shear_bands=shear_bands,
+            verbose=verbose,
         )
 
     if output_path.endswith(".fits.fz"):
