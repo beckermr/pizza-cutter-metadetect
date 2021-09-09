@@ -317,10 +317,11 @@ def _post_process_results(
     dt = 0
     missing_slice_inds = []
     for res, i, _dt in outputs:
+        dt += _dt
         if res is None:
             missing_slice_inds.append(i)
+            continue
 
-        dt += _dt
         for mdet_step, data in res.items():
             if data.size > 0:
                 file_id = max(obj_data['file_id'][i, 0], 0)
