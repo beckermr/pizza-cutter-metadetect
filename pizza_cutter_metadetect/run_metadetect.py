@@ -318,12 +318,12 @@ def _post_process_results(
     missing_slice_inds = []
     for res, i, _dt in outputs:
         dt += _dt
-        if res is None:
+        if res is None or res["noshear"] is None or res["noshear"].size == 0:
             missing_slice_inds.append(i)
             continue
 
         for mdet_step, data in res.items():
-            if data.size > 0:
+            if data is not None and data.size > 0:
                 file_id = max(obj_data['file_id'][i, 0], 0)
                 if file_id in wcs_cache:
                     wcs, position_offset = wcs_cache[file_id]
