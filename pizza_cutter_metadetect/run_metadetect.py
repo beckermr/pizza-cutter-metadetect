@@ -318,15 +318,12 @@ def _post_process_results(
     missing_slice_inds = []
     for res, i, _dt in outputs:
         dt += _dt
-        if res is None:
+        if res is None or res["noshear"] is None or res["noshear"].size == 0:
             missing_slice_inds.append(i)
             continue
 
-        measured_any = False
         for mdet_step, data in res.items():
             if data is not None and data.size > 0:
-                measured_any = True
-
                 file_id = max(obj_data['file_id'][i, 0], 0)
                 if file_id in wcs_cache:
                     wcs, position_offset = wcs_cache[file_id]
@@ -355,10 +352,6 @@ def _post_process_results(
                     info=info,
                     output_file=output_file,
                 ))
-
-        if not measured_any:
-            missing_slice_inds.append(i)
-            continue
 
     if len(output) > 0:
         # concatenate once since generally more efficient
