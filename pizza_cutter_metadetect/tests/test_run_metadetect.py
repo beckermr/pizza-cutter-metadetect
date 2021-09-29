@@ -160,6 +160,7 @@ def make_sim(
                 image=psf_im,
                 jacobian=psf_jac,
             ),
+            mfrac=rng.normal(size=im.shape, scale=0.1),
         )
         obslist = ngmix.ObsList()
         obslist.append(obs)
@@ -590,6 +591,22 @@ def test_do_metadetect_shear_bands():
                 res1[0][key][col],
                 res2[0][key][col],
             )
+
+
+def test_do_metadetect_pos_mfrac():
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+    mdet_seed = 12
+
+    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True],
+    )
+
+    for key in ['noshear', '1p', '1m', '2p', '2m']:
+        assert np.all(res[0][key]["mfrac"] >= 0)
 
 
 @pytest.mark.parametrize("wmul", [
