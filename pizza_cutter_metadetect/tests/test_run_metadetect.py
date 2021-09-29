@@ -552,7 +552,7 @@ def test_do_metadetect(shear_bands):
     )
 
     assert np.abs(m) < max(1e-3, 3*merr)
-    assert np.abs(c) < 3*cerr
+    assert np.abs(c) < max(1e-6, 3*cerr)
 
 
 def test_do_metadetect_shear_bands():

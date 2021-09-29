@@ -33,7 +33,6 @@ jobs:
           mamba install -y -q \
             flake8 \
             pytest \
-            pytest-xdist \
             "numba!=0.54.0"
 
       - name: lint
@@ -47,4 +46,4 @@ jobs:
         run: |
           git clone https://github.com/beckermr/des-y3-test-data.git
           export TEST_DESDATA=`pwd`/des-y3-test-data
-          pytest -n 4 -vv pizza_cutter_metadetect
+          pytest -vv pizza_cutter_metadetect
