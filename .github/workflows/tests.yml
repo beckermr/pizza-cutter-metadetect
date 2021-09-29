@@ -34,7 +34,7 @@ jobs:
             flake8 \
             pytest \
             pytest-xdist \
-            "numba<0.54.0"
+            "numba!=0.54.0"
 
       - name: lint
         shell: bash -l {0}
@@ -47,4 +47,4 @@ jobs:
         run: |
           git clone https://github.com/beckermr/des-y3-test-data.git
           export TEST_DESDATA=`pwd`/des-y3-test-data
-          pytest -vv pizza_cutter_metadetect
+          pytest -n 4 -vv pizza_cutter_metadetect
