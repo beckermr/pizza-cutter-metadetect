@@ -98,6 +98,7 @@ def make_sim(
     dens=100,
     ngrid=7,
     snr=1e6,
+    neg_mfrac=False,
 ):
     rng = np.random.RandomState(seed=seed)
 
@@ -160,7 +161,9 @@ def make_sim(
                 image=psf_im,
                 jacobian=psf_jac,
             ),
-            mfrac=rng.normal(size=im.shape, scale=0.1),
+            mfrac=rng.normal(size=im.shape, scale=0.1) * (
+                1 if neg_mfrac else 0
+            ),
         )
         obslist = ngmix.ObsList()
         obslist.append(obs)
@@ -600,7 +603,9 @@ def test_do_metadetect_pos_mfrac():
     preconfig = None
     mdet_seed = 12
 
-    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
+    )
     res = _do_metadetect(
         CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True],
     )
