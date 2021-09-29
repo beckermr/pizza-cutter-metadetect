@@ -7,7 +7,11 @@ import pytest
 import numpy as np
 from esutil.wcsutil import WCS
 
-from ..run_metadetect import _make_output_array, _do_metadetect
+from ..run_metadetect import (
+    _make_output_array,
+    _do_metadetect,
+    _truncate_negative_mfrac_weight,
+)
 from ..masks import MASK_SLICEDUPE, MASK_GAIA_STAR
 from ..gaia_stars import BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR
 
@@ -94,6 +98,7 @@ def make_sim(
     dens=100,
     ngrid=7,
     snr=1e6,
+    neg_mfrac=False,
 ):
     rng = np.random.RandomState(seed=seed)
 
@@ -155,6 +160,9 @@ def make_sim(
             psf=ngmix.Observation(
                 image=psf_im,
                 jacobian=psf_jac,
+            ),
+            mfrac=rng.normal(size=im.shape, scale=0.1) * (
+                1 if neg_mfrac else 0
             ),
         )
         obslist = ngmix.ObsList()
@@ -544,7 +552,7 @@ def test_do_metadetect(shear_bands):
     )
 
     assert np.abs(m) < max(1e-3, 3*merr)
-    assert np.abs(c) < 3*cerr
+    assert np.abs(c) < max(1e-6, 3*cerr)
 
 
 def test_do_metadetect_shear_bands():
@@ -586,3 +594,64 @@ def test_do_metadetect_shear_bands():
                 res1[0][key][col],
                 res2[0][key][col],
             )
+
+
+def test_do_metadetect_pos_mfrac():
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+    mdet_seed = 12
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
+    )
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True],
+    )
+
+    for key in ['noshear', '1p', '1m', '2p', '2m']:
+        assert np.all(res[0][key]["mfrac"] >= 0)
+
+
+@pytest.mark.parametrize("wmul", [
+    [1, 0, 0, 1],
+    [0, 0, 0, 0],
+    [0, 1, 1, 0],
+])
+@pytest.mark.parametrize("mmul", [
+    [0, 0, 0, 0],
+    [0, 1, 1, 0],
+    [1, 0, 0, 1],
+])
+def test_truncate_negative_mfrac_weight(wmul, mmul):
+    rng = np.random.RandomState(seed=10)
+    mbobs = ngmix.MultiBandObsList()
+    for i in range(3):
+        obslist = ngmix.ObsList()
+        for j in range(4):
+            obs = ngmix.Observation(
+                image=rng.normal(size=(10, 10)),
+                weight=rng.normal(size=(10, 10)) * wmul[j],
+                ignore_zero_weight=False,
+                mfrac=rng.normal(size=(10, 10)) * mmul[j],
+            )
+            obslist.append(obs)
+        mbobs.append(obslist)
+
+    _truncate_negative_mfrac_weight(mbobs)
+
+    rng = np.random.RandomState(seed=10)
+    for obslist in mbobs:
+        for j, obs in enumerate(obslist):
+            if wmul[j] > 0:
+                assert np.all(obs.weight >= 0)
+                assert np.any(obs.weight > 0)
+            else:
+                assert np.all(obs.weight == 0)
+
+            if mmul[j] > 0:
+                assert np.all(obs.mfrac >= 0)
+                assert np.any(obs.mfrac > 0)
+            else:
+                assert np.all(obs.mfrac == 0)

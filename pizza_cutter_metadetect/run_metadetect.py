@@ -364,10 +364,34 @@ def _post_process_results(
     return output, dt, missing_slice_inds, wcs, position_offset, coadd_dims
 
 
+def _truncate_negative_mfrac_weight(mbobs):
+    for obslist in mbobs:
+        for obs in obslist:
+            with obs.writeable():
+                msk = obs.mfrac < 0
+                if np.any(msk):
+                    LOGGER.debug(
+                        "truncating negative mfrac values: min %f",
+                        obs.mfrac[msk].min(),
+                    )
+                    obs.mfrac[msk] = 0
+
+                msk = obs.weight < 0
+                if np.any(msk):
+                    LOGGER.debug(
+                        "truncating negative weight values: min %f",
+                        obs.weight[msk].min(),
+                    )
+                    obs.weight[msk] = 0
+
+
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
     LOGGER.debug("preprocessing entry %d", i)
 
+    _truncate_negative_mfrac_weight(mbobs)
+
     if gaia_stars is not None:
+        LOGGER.debug("masking GAIA stars")
         mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'])
 
     if preconfig is None:
@@ -460,6 +484,7 @@ def _load_gaia_stars(mbmeds, preconfig):
             poly_coeffs=gaia_config['poly_coeffs'],
             max_g_mag=gaia_config['max_g_mag'],
         )
+        print("loaded GAIA star masks", flush=True)
     else:
         gaia_stars = None
     return gaia_stars
