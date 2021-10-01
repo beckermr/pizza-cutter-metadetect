@@ -478,14 +478,14 @@ def run_sim(seed, mdet_seed, shear_bands):
 
     mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     _pres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands, None,
     )
     if _pres is None:
         return None
 
     mbobs = make_sim(seed=seed, nbands=3, g1=-0.02, g2=0.00, ngrid=7, snr=1e6)
     _mres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands, None,
     )
     if _mres is None:
         return None
@@ -564,17 +564,17 @@ def test_do_metadetect_shear_bands():
 
     mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res_all = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True],
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
     )
 
     mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res1 = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, False, False],
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, False, False], None,
     )
 
     mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res2 = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [False, True, True],
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [False, True, True], None,
     )
 
     # look at a subset of keys
@@ -607,7 +607,7 @@ def test_do_metadetect_pos_mfrac():
         seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
     )
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True],
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
     )
 
     for key in ['noshear', '1p', '1m', '2p', '2m']:
