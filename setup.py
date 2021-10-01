@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 
 scripts = [
     'bin/run-metadetect-on-slices',
+    'bin/make-coadd-image-from-slices',
 ]
 
 setup(

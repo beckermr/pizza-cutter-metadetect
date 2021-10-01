@@ -36,6 +36,7 @@ def _process(
     tmpdir,
     n_jobs,
     shear_bands,
+    viz_dir,
 ):
     with open(config, 'r') as fp:
         _config = yaml.load(fp.read(), Loader=yaml.Loader)
@@ -105,6 +106,7 @@ def _process(
             n_jobs=n_jobs,
             shear_bands=shear_bands,
             verbose=verbose,
+            viz_dir=viz_dir,
         )
 
     if output_path.endswith(".fits.fz"):
@@ -191,9 +193,12 @@ def _process(
         'Default if not given is to use all bands for shear.'
     ),
 )
+@click.option(
+    '--viz-dir', type=str, default=None,
+    help="If set, write images of the slices to the given location.")
 def main(
     meds_files, config, output_path, seed, use_tmpdir, part, log_level,
-    meds_range, tmpdir, n_jobs, shear_bands,
+    meds_range, tmpdir, n_jobs, shear_bands, viz_dir,
 ):
     """Run metdetect on MEDS_FILES."""
 
@@ -213,6 +218,7 @@ def main(
             tmpdir=tmpdir,
             n_jobs=n_jobs,
             shear_bands=shear_bands,
+            viz_dir=viz_dir,
         )
 
     if use_tmpdir and tmpdir is None:
