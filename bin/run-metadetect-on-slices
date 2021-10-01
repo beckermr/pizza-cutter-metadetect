@@ -205,7 +205,7 @@ def _process(
     type=str,
     help=(
         'The list of band names as a single string (e.g., "riz"). If passed, this '
-        'will put those band fluxes in the outputs.'
+        'will put those band flux names in the outputs.'
     ),
 )
 @click.option(
