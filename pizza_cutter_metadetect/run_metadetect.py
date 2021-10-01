@@ -356,10 +356,18 @@ def _post_process_results(
     if len(output) > 0:
         # concatenate once since generally more efficient
         output = np.concatenate(output)
+        assert len(wcs_cache) == 1
     else:
         output = None
-
-    assert len(wcs_cache) == 1
+        # default to first slice if we find nothing
+        i = 0
+        file_id = max(obj_data['file_id'][i, 0], 0)
+        wcs = eu.wcsutil.WCS(json.loads(image_info['wcs'][file_id]))
+        position_offset = image_info['position_offset'][file_id]
+        coadd_dims = (wcs.get_naxis()[0], wcs.get_naxis()[1])
+        assert coadd_dims == (10000, 10000), (
+            "Wrong coadd dims %s computed!" % (coadd_dims,)
+        )
 
     return output, dt, missing_slice_inds, wcs, position_offset, coadd_dims
 
@@ -385,6 +393,86 @@ def _truncate_negative_mfrac_weight(mbobs):
                     obs.weight[msk] = 0
 
 
+def _write_mbobs_image(viz_dir, mbobs, islice, slug):
+    import proplot as pplt
+
+    nrows = sum([1 if len(mbobs[i]) > 0 else 0 for i in range(len(mbobs))])
+    ncols = 6
+    cmap = "rocket"
+
+    fig, axs = pplt.subplots(
+        nrows=nrows, ncols=ncols, refaspect=1, span=False,
+    )
+
+    for i in range(nrows):
+        if len(mbobs[i]) == 0:
+            continue
+        obs = mbobs[i][0]
+
+        ax = axs[i, 0]
+        ax.imshow(
+            np.arcsinh(obs.image * np.sqrt(obs.weight)),
+            cmap=cmap,
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("image")
+        ax.set_ylabel("band %d" % i)
+
+        ax = axs[i, 1]
+        ax.imshow(
+            obs.mfrac,
+            cmap=cmap,
+            vmin=0,
+            vmax=obs.mfrac.max(),
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("mfrac")
+
+        ax = axs[i, 2]
+        ax.imshow(
+            np.arcsinh(obs.bmask),
+            cmap=cmap,
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("bmask")
+
+        ax = axs[i, 3]
+        ax.imshow(
+            np.arcsinh(obs.ormask),
+            cmap=cmap,
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("ormask")
+
+        ax = axs[i, 4]
+        ax.imshow(
+            np.arcsinh(obs.noise),
+            cmap=cmap,
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("noise")
+
+        ax = axs[i, 5]
+        ax.imshow(
+            np.arcsinh(obs.weight),
+            cmap=cmap,
+            vmin=0,
+            vmax=obs.weight.max(),
+        )
+        ax.grid(False)
+        if i == 0:
+            ax.set_title("weight")
+
+    fname = os.path.join(viz_dir, "mbobs%d%s.png" % (islice, slug))
+    os.makedirs(os.path.dirname(fname), exist_ok=True)
+    fig.savefig(fname)
+
+
 def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
     LOGGER.debug("preprocessing entry %d", i)
 
@@ -401,15 +489,22 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
         return mbobs
 
 
-def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
-    LOGGER.debug("running mdet for entry %d", i)
+def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, viz_dir):
     _t0 = time.time()
     res = None
     if mbobs is not None:
+        if viz_dir is not None:
+            _write_mbobs_image(viz_dir, mbobs, i, "_raw")
+
+        rng = np.random.RandomState(seed=seed)
+        mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
+
+        if viz_dir is not None:
+            _write_mbobs_image(viz_dir, mbobs, i, "_preproc")
+
         minnum = min([len(olist) for olist in mbobs])
         if minnum > 0:
-            rng = np.random.RandomState(seed=seed)
-            mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
+            LOGGER.debug("running mdet for entry %d", i)
 
             shear_mbobs = ngmix.MultiBandObsList()
             nonshear_mbobs = ngmix.MultiBandObsList()
@@ -423,6 +518,15 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands):
                 nonshear_mbobs = None
 
             res = do_metadetect(config, shear_mbobs, rng, nonshear_mbobs=nonshear_mbobs)
+        else:
+            LOGGER.debug(
+                "mbobs has no data for entry %d in one or more bands: %s",
+                i,
+                [len(olist) for olist in mbobs],
+            )
+    else:
+        LOGGER.debug("mbobs is None for entry %d", i)
+
     return res, i, time.time() - _t0
 
 
@@ -503,6 +607,7 @@ def run_metadetect(
     n_jobs=1,
     shear_bands=None,
     verbose=100,
+    viz_dir=None,
 ):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
@@ -535,6 +640,8 @@ def run_metadetect(
         files used to make the `multiband_meds`.
     verbose : int, optional
         joblib logging level.
+    viz_dir : str, optional
+        If not None, write images of the slices to the given location.
     """
     t0 = time.time()
 
@@ -563,7 +670,9 @@ def run_metadetect(
     if n_jobs == 1:
         outputs = [
             _do_metadetect(
-                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands)
+                config, mbobs, gaia_stars, seed+i*256, i,
+                preconfig, shear_bands, viz_dir
+            )
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
         outputs = joblib.Parallel(
@@ -573,7 +682,8 @@ def run_metadetect(
             max_nbytes=None,  # never memmap
         )(
             joblib.delayed(_do_metadetect)(
-                config, mbobs, gaia_stars, seed+i*256, i, preconfig, shear_bands,
+                config, mbobs, gaia_stars, seed+i*256, i,
+                preconfig, shear_bands, viz_dir,
             )
             for i, mbobs in meds_iter()
         )
