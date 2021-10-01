@@ -413,6 +413,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             np.arcsinh(obs.image * np.sqrt(obs.weight)),
             cmap=cmap,
+            origin='lower',
         )
         ax.grid(False)
         if i == 0:
@@ -423,6 +424,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             obs.mfrac,
             cmap=cmap,
+            origin='lower',
             vmin=0,
             vmax=obs.mfrac.max(),
         )
@@ -434,6 +436,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             np.arcsinh(obs.bmask),
             cmap=cmap,
+            origin='lower',
         )
         ax.grid(False)
         if i == 0:
@@ -443,6 +446,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             np.arcsinh(obs.ormask),
             cmap=cmap,
+            origin='lower',
         )
         ax.grid(False)
         if i == 0:
@@ -452,6 +456,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             np.arcsinh(obs.noise),
             cmap=cmap,
+            origin='lower',
         )
         ax.grid(False)
         if i == 0:
@@ -461,6 +466,7 @@ def _write_mbobs_image(viz_dir, mbobs, islice, slug):
         ax.imshow(
             np.arcsinh(obs.weight),
             cmap=cmap,
+            origin='lower',
             vmin=0,
             vmax=obs.weight.max(),
         )
