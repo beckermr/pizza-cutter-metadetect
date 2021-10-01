@@ -147,6 +147,16 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names)
             assert len(new_fld) == fld[2][0]
         elif band_names is not None and fld[0] == (mpre + "band_flux_flags"):
             new_fld = [("mdet_flux_flags", "i4")]
+        elif fld[0] == "psf_g":
+            new_fld = [
+                ("psf_g_1", fld[1]),
+                ("psf_g_2", fld[1]),
+            ]
+        elif fld[0] == "psfrec_g":
+            new_fld = [
+                ("psfrec_g_1", fld[1]),
+                ("psfrec_g_2", fld[1]),
+            ]
         elif fld[0].startswith(mpre):
             new_fld = copy.deepcopy(list(fld))
             new_fld[0] = "mdet_" + fld[0][len(mpre):]
@@ -238,6 +248,12 @@ def _make_output_array(
                 arr["mdet_%s_flux_err" % b] = data[name][:, i]
         elif band_names is not None and name == (mpre + "band_flux_flags"):
             arr["mdet_flux_flags"] = data[name]
+        elif name == "psf_g":
+            arr["psf_g_1"] = data[name][:, 0]
+            arr["psf_g_2"] = data[name][:, 1]
+        elif name == "psfrec_g":
+            arr["psfrec_g_1"] = data[name][:, 0]
+            arr["psfrec_g_2"] = data[name][:, 1]
         elif name.startswith(mpre):
             new_name = "mdet_" + name[len(mpre):]
             arr[new_name] = data[name]

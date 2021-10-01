@@ -273,6 +273,8 @@ def test_make_output_array(band_names):
         ("wmomm_band_flux", "f8", (3,)),
         ("wmomm_band_flux_err", "f8", (3,)),
         ("wmomm_band_flux_flags", "i4"),
+        ("psf_g", "f8", (2,)),
+        ("psfrec_g", "f8", (2,)),
     ]
     data = np.zeros(10, dtype=dtype)
 
@@ -289,6 +291,8 @@ def test_make_output_array(band_names):
     data["wmomm_band_flux"] = np.arange(10*3).reshape((10, 3)) + 37
     data["wmomm_band_flux_err"] = np.arange(10*3).reshape((10, 3)) + 47
     data["wmomm_band_flux_flags"] = np.arange(10) + 53
+    data['psf_g'] = np.arange(10*2).reshape((10, 2)) + 177
+    data['psfrec_g'] = np.arange(10*2).reshape((10, 2)) + 1777
 
     arr = _make_output_array(
         data=data,
@@ -313,10 +317,18 @@ def test_make_output_array(band_names):
         band_names=band_names,
     )
 
+    if band_names is not None:
+        assert all(len(df) == 2 for df in arr.dtype.descr)
+
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
     assert np.all(arr['tilename'] == "tname")
     assert np.all(arr['filename'] == "tname_blah.fits")
+
+    assert np.all(arr['psf_g_1'] == data['psf_g'][:, 0])
+    assert np.all(arr['psf_g_2'] == data['psf_g'][:, 1])
+    assert np.all(arr['psfrec_g_1'] == data['psfrec_g'][:, 0])
+    assert np.all(arr['psfrec_g_2'] == data['psfrec_g'][:, 1])
 
     assert np.all(arr['mdet_g_1'] == data['wmomm_g'][:, 0])
     assert np.all(arr['mdet_g_2'] == data['wmomm_g'][:, 1])
@@ -374,6 +386,8 @@ def test_make_output_array(band_names):
     assert 'wmomm_blah' not in arr.dtype.names
     assert "wmomm_g" not in arr.dtype.names
     assert "wmomm_g_cov" not in arr.dtype.names
+    assert "psf_g" not in arr.dtype.names
+    assert "psfrec_g" not in arr.dtype.names
     assert "mdet_g" not in arr.dtype.names
     assert "mdet_g_cov" not in arr.dtype.names
     assert "wmomm_band_flux" not in arr.dtype.names
