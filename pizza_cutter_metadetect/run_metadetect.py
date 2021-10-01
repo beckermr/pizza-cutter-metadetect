@@ -100,7 +100,7 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     return fname
 
 
-def _make_output_dtype(*, old_dt, model, filename_len, tilename_len):
+def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names):
     new_dt = [
         ('slice_id', 'i8'),
         ('mdet_step', 'U7'),
@@ -108,14 +108,14 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len):
         ('dec', 'f8'),
         ('ra_det', 'f8'),
         ('dec_det', 'f8'),
-        ('row_det', 'f8'),
-        ('col_det', 'f8'),
-        ('row', 'f8'),
-        ('col', 'f8'),
-        ('slice_row', 'f8'),
-        ('slice_col', 'f8'),
-        ('slice_row_det', 'f8'),
-        ('slice_col_det', 'f8'),
+        ('y_det', 'f8'),
+        ('x_det', 'f8'),
+        ('y', 'f8'),
+        ('x', 'f8'),
+        ('slice_y', 'f8'),
+        ('slice_x', 'f8'),
+        ('slice_y_det', 'f8'),
+        ('slice_x_det', 'f8'),
         ('mask_flags', 'i4'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
@@ -125,13 +125,36 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len):
     for fld in old_dt:
         if fld[0] in skip_cols:
             continue
+        elif fld[0] == (mpre + "g"):
+            new_fld = [("mdet_g_1", "f8"), ("mdet_g_2", "f8")]
+        elif fld[0] == (mpre + "g_cov"):
+            new_fld = [
+                ("mdet_g_cov_1_1", "f8"),
+                ("mdet_g_cov_1_2", "f8"),
+                ("mdet_g_cov_2_2", "f8")
+            ]
+        elif band_names is not None and fld[0] == (mpre + "band_flux"):
+            new_fld = [
+                ("mdet_%s_flux" % b, fld[1])
+                for b in band_names
+            ]
+            assert len(new_fld) == fld[2][0]
+        elif band_names is not None and fld[0] == (mpre + "band_flux_err"):
+            new_fld = [
+                ("mdet_%s_flux_err" % b, fld[1])
+                for b in band_names
+            ]
+            assert len(new_fld) == fld[2][0]
+        elif band_names is not None and fld[0] == (mpre + "band_flux_flags"):
+            new_fld = [("mdet_flux_flags", "i4")]
         elif fld[0].startswith(mpre):
             new_fld = copy.deepcopy(list(fld))
             new_fld[0] = "mdet_" + fld[0][len(mpre):]
-            new_fld = tuple(new_fld)
+            new_fld = [tuple(new_fld)]
         else:
-            new_fld = fld
-        new_dt += [new_fld]
+            new_fld = [fld]
+
+        new_dt += new_fld
 
     return new_dt
 
@@ -140,7 +163,7 @@ def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info, output_file,
+    central_size, coadd_dims, model, info, output_file, band_names,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -176,6 +199,9 @@ def _make_output_array(
         Dict of tile geom information for getting detections in the tile boundaries.
     output_file : str
         The output filename.
+    band_names : list of str, optional
+        If given, the names of the bands as single strings to use in generating the
+        output data.
 
     Returns
     -------
@@ -190,12 +216,28 @@ def _make_output_array(
         model=model,
         filename_len=len(filename),
         tilename_len=len(tilename),
+        band_names=band_names,
     )
     mpre = model + '_'
     arr = np.zeros(data.shape, dtype=new_dt)
     for name in data.dtype.names:
         if name in arr.dtype.names:
             arr[name] = data[name]
+        elif name == (mpre + "g"):
+            arr["mdet_g_1"] = data[name][:, 0]
+            arr["mdet_g_2"] = data[name][:, 1]
+        elif name == (mpre + "g_cov"):
+            arr["mdet_g_cov_1_1"] = data[name][:, 0, 0]
+            arr["mdet_g_cov_1_2"] = data[name][:, 0, 1]
+            arr["mdet_g_cov_2_2"] = data[name][:, 1, 1]
+        elif band_names is not None and name == (mpre + "band_flux"):
+            for i, b in enumerate(band_names):
+                arr["mdet_%s_flux" % b] = data[name][:, i]
+        elif band_names is not None and name == (mpre + "band_flux_err"):
+            for i, b in enumerate(band_names):
+                arr["mdet_%s_flux_err" % b] = data[name][:, i]
+        elif band_names is not None and name == (mpre + "band_flux_flags"):
+            arr["mdet_flux_flags"] = data[name]
         elif name.startswith(mpre):
             new_name = "mdet_" + name[len(mpre):]
             arr[new_name] = data[name]
@@ -206,28 +248,28 @@ def _make_output_array(
     arr['tilename'] = tilename
 
     # we swap names here calling the sheared pos _det
-    arr['slice_row'] = data['sx_row_noshear']
-    arr['slice_col'] = data['sx_col_noshear']
-    arr['slice_row_det'] = data['sx_row']
-    arr['slice_col_det'] = data['sx_col']
+    arr['slice_y'] = data['sx_row_noshear']
+    arr['slice_x'] = data['sx_col_noshear']
+    arr['slice_y_det'] = data['sx_row']
+    arr['slice_x_det'] = data['sx_col']
 
     # these are in global coadd coords
-    arr['row'] = orig_start_row + data['sx_row_noshear']
-    arr['col'] = orig_start_col + data['sx_col_noshear']
-    arr['row_det'] = orig_start_row + data['sx_row']
-    arr['col_det'] = orig_start_col + data['sx_col']
+    arr['y'] = orig_start_row + data['sx_row_noshear']
+    arr['x'] = orig_start_col + data['sx_col_noshear']
+    arr['y_det'] = orig_start_row + data['sx_row']
+    arr['x_det'] = orig_start_col + data['sx_col']
 
     arr['ra'], arr['dec'] = _get_radec(
-        row=arr['slice_row'],
-        col=arr['slice_col'],
+        row=arr['slice_y'],
+        col=arr['slice_x'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
     )
     arr['ra_det'], arr['dec_det'] = _get_radec(
-        row=arr['slice_row_det'],
-        col=arr['slice_col_det'],
+        row=arr['slice_y_det'],
+        col=arr['slice_x_det'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
@@ -243,10 +285,10 @@ def _make_output_array(
     )
 
     msk = (
-        (arr['slice_row'] >= slice_bnds["min_row"])
-        & (arr['slice_row'] < slice_bnds["max_row"])
-        & (arr['slice_col'] >= slice_bnds["min_col"])
-        & (arr['slice_col'] < slice_bnds["max_col"])
+        (arr['slice_y'] >= slice_bnds["min_row"])
+        & (arr['slice_y'] < slice_bnds["max_row"])
+        & (arr['slice_x'] >= slice_bnds["min_col"])
+        & (arr['slice_x'] < slice_bnds["max_col"])
     )
     arr["mask_flags"][~msk] |= MASK_SLICEDUPE
 
@@ -308,7 +350,7 @@ def _get_radec(*,
 
 def _post_process_results(
     *, outputs, obj_data, image_info, buffer_size, central_size, config, info,
-    output_file,
+    output_file, band_names,
 ):
     # post process results
     wcs_cache = {}
@@ -351,6 +393,7 @@ def _post_process_results(
                     model=config['model'],
                     info=info,
                     output_file=output_file,
+                    band_names=band_names,
                 ))
 
     if len(output) > 0:
@@ -614,6 +657,7 @@ def run_metadetect(
     shear_bands=None,
     verbose=100,
     viz_dir=None,
+    band_names=None,
 ):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
@@ -648,6 +692,9 @@ def run_metadetect(
         joblib logging level.
     viz_dir : str, optional
         If not None, write images of the slices to the given location.
+    band_names : list of str, optional
+        If given, the names of the bands as single strings to use in generating the
+        output data.
     """
     t0 = time.time()
 
@@ -725,6 +772,7 @@ def run_metadetect(
         config=config,
         info=info,
         output_file=output_file,
+        band_names=band_names,
     )
 
     # make the masks

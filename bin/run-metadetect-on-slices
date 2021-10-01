@@ -37,6 +37,7 @@ def _process(
     n_jobs,
     shear_bands,
     viz_dir,
+    band_names,
 ):
     with open(config, 'r') as fp:
         _config = yaml.load(fp.read(), Loader=yaml.Loader)
@@ -107,6 +108,11 @@ def _process(
             shear_bands=shear_bands,
             verbose=verbose,
             viz_dir=viz_dir,
+            band_names=(
+                [b for b in band_names]
+                if band_names is not None
+                else None
+            ),
         )
 
     if output_path.endswith(".fits.fz"):
@@ -194,11 +200,20 @@ def _process(
     ),
 )
 @click.option(
+    '--band-names',
+    default=None,
+    type=str,
+    help=(
+        'The list of band names as a single string (e.g., "riz"). If passed, this '
+        'will put those band fluxes in the outputs.'
+    ),
+)
+@click.option(
     '--viz-dir', type=str, default=None,
     help="If set, write images of the slices to the given location.")
 def main(
     meds_files, config, output_path, seed, use_tmpdir, part, log_level,
-    meds_range, tmpdir, n_jobs, shear_bands, viz_dir,
+    meds_range, tmpdir, n_jobs, shear_bands, viz_dir, band_names,
 ):
     """Run metdetect on MEDS_FILES."""
 
@@ -219,6 +234,7 @@ def main(
             n_jobs=n_jobs,
             shear_bands=shear_bands,
             viz_dir=viz_dir,
+            band_names=band_names,
         )
 
     if use_tmpdir and tmpdir is None:

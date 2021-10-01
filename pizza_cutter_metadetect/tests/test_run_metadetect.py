@@ -235,7 +235,8 @@ def boostrap_m_c(pres, mres):
     return m, merr, c, cerr
 
 
-def test_make_output_array():
+@pytest.mark.parametrize("band_names", [None, ["f", "j", "p"]])
+def test_make_output_array(band_names):
     wcs = WCS(dict(
         naxis1=100,
         naxis2=100,
@@ -267,6 +268,11 @@ def test_make_output_array():
         ('wmom_blah', 'f8'),
         ('wmomm_blah', 'f8'),
         ('bmask', 'i4'),
+        ("wmomm_g", "f8", (2,)),
+        ("wmomm_g_cov", "f8", (2, 2)),
+        ("wmomm_band_flux", "f8", (3,)),
+        ("wmomm_band_flux_err", "f8", (3,)),
+        ("wmomm_band_flux_flags", "i4"),
     ]
     data = np.zeros(10, dtype=dtype)
 
@@ -278,6 +284,11 @@ def test_make_output_array():
     data['wmomm_blah'] = np.arange(10) + 23.5
     data['wmom_blah'] = np.arange(10) + 314234.5
     data['bmask'] = [BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR] + [0]*8
+    data['wmomm_g'] = np.arange(10*2).reshape((10, 2)) + 17
+    data['wmomm_g_cov'] = np.arange(10*4).reshape((10, 2, 2)) + 23
+    data["wmomm_band_flux"] = np.arange(10*3).reshape((10, 3)) + 37
+    data["wmomm_band_flux_err"] = np.arange(10*3).reshape((10, 3)) + 47
+    data["wmomm_band_flux_flags"] = np.arange(10) + 53
 
     arr = _make_output_array(
         data=data,
@@ -299,12 +310,32 @@ def test_make_output_array():
             'uramax': 180,
         },
         output_file=output_file,
+        band_names=band_names,
     )
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
     assert np.all(arr['tilename'] == "tname")
     assert np.all(arr['filename'] == "tname_blah.fits")
+
+    assert np.all(arr['mdet_g_1'] == data['wmomm_g'][:, 0])
+    assert np.all(arr['mdet_g_2'] == data['wmomm_g'][:, 1])
+    assert np.all(arr['mdet_g_cov_1_1'] == data['wmomm_g_cov'][:, 0, 0])
+    assert np.all(arr['mdet_g_cov_1_2'] == data['wmomm_g_cov'][:, 0, 1])
+    assert np.all(arr['mdet_g_cov_2_2'] == data['wmomm_g_cov'][:, 1, 1])
+
+    if band_names is None:
+        assert np.all(arr["mdet_band_flux"] == data["wmomm_band_flux"])
+        assert np.all(arr["mdet_band_flux_err"] == data["wmomm_band_flux_err"])
+        assert np.all(arr["mdet_band_flux_flags"] == data["wmomm_band_flux_flags"])
+    else:
+        for i, b in enumerate(band_names):
+            for tail in ["flux", "flux_err"]:
+                assert np.all(
+                    arr["mdet_%s_%s" % (b, tail)]
+                    == data["wmomm_band_%s" % tail][:, i]
+                )
+        assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
 
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
@@ -331,16 +362,29 @@ def test_make_output_array():
     assert np.all(arr['ra_det'] == ura)
     assert np.all(arr['dec_det'] == udec)
 
-    assert np.all(arr['slice_row_det'] == data['sx_row'])
-    assert np.all(arr['slice_col_det'] == data['sx_col'])
-    assert np.all(arr['slice_row'] == data['sx_row_noshear'])
-    assert np.all(arr['slice_col'] == data['sx_col_noshear'])
+    assert np.all(arr['slice_y_det'] == data['sx_row'])
+    assert np.all(arr['slice_x_det'] == data['sx_col'])
+    assert np.all(arr['slice_y'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_x'] == data['sx_col_noshear'])
 
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
     assert 'sx_row' not in arr.dtype.names
     assert 'sx_col' not in arr.dtype.names
     assert 'wmomm_blah' not in arr.dtype.names
+    assert "wmomm_g" not in arr.dtype.names
+    assert "wmomm_g_cov" not in arr.dtype.names
+    assert "mdet_g" not in arr.dtype.names
+    assert "mdet_g_cov" not in arr.dtype.names
+    assert "wmomm_band_flux" not in arr.dtype.names
+    assert "wmomm_band_flux_err" not in arr.dtype.names
+    assert "wmomm_band_flux_flags" not in arr.dtype.names
+    if band_names is not None:
+        assert "mdet_band_flux" not in arr.dtype.names
+        assert "mdet_band_flux_err" not in arr.dtype.names
+        assert "mdet_band_flux_flags" not in arr.dtype.names
+
+    print(arr.dtype.names)
 
 
 @pytest.mark.parametrize(
@@ -424,6 +468,7 @@ def test_make_output_array_bounds(
             'uramax': 180,
         },
         output_file=output_file,
+        band_names=None,
     )
 
     assert np.all(arr['slice_id'] == slice_id)
@@ -458,10 +503,10 @@ def test_make_output_array_bounds(
     assert np.all(arr['ra_det'] == ura)
     assert np.all(arr['dec_det'] == udec)
 
-    assert np.all(arr['slice_row_det'] == data['sx_row'])
-    assert np.all(arr['slice_col_det'] == data['sx_col'])
-    assert np.all(arr['slice_row'] == data['sx_row_noshear'])
-    assert np.all(arr['slice_col'] == data['sx_col_noshear'])
+    assert np.all(arr['slice_y_det'] == data['sx_row'])
+    assert np.all(arr['slice_x_det'] == data['sx_col'])
+    assert np.all(arr['slice_y'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_x'] == data['sx_col_noshear'])
 
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
