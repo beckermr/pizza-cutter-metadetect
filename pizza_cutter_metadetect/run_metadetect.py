@@ -21,7 +21,8 @@ from .gaia_stars import (
 )
 from .masks import (
     make_mask, get_slice_bounds, in_unique_coadd_tile_region,
-    MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR
+    MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR,
+    MASK_NOSLICE, MASK_MISSING_BAND, MASK_MISSING_NOSHEAR_DET,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
@@ -374,10 +375,14 @@ def _post_process_results(
     output = []
     dt = 0
     missing_slice_inds = []
-    for res, i, _dt in outputs:
+    missing_slice_flags = []
+    for res, i, _dt, flags in outputs:
         dt += _dt
         if res is None or res["noshear"] is None or res["noshear"].size == 0:
+            if res["noshear"] is None or res["noshear"].size == 0:
+                flags |= MASK_MISSING_NOSHEAR_DET
             missing_slice_inds.append(i)
+            missing_slice_flags.append(flags)
             continue
 
         for mdet_step, data in res.items():
@@ -428,7 +433,10 @@ def _post_process_results(
             "Wrong coadd dims %s computed!" % (coadd_dims,)
         )
 
-    return output, dt, missing_slice_inds, wcs, position_offset, coadd_dims
+    return (
+        output, dt, missing_slice_inds, missing_slice_flags, wcs,
+        position_offset, coadd_dims
+    )
 
 
 def _truncate_negative_mfrac_weight(mbobs):
@@ -557,6 +565,7 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
 def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, viz_dir):
     _t0 = time.time()
     res = None
+    flags = 0
     if mbobs is not None:
         if viz_dir is not None:
             _write_mbobs_image(viz_dir, mbobs, i, "_raw")
@@ -589,10 +598,12 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
                 i,
                 [len(olist) for olist in mbobs],
             )
+            flags |= MASK_MISSING_BAND
     else:
         LOGGER.debug("mbobs is None for entry %d", i)
+        flags |= MASK_NOSLICE
 
-    return res, i, time.time() - _t0
+    return res, i, time.time() - _t0, flags
 
 
 def get_part_ranges(part, n_parts, size):
@@ -778,7 +789,8 @@ def run_metadetect(
 
     pz_config = yaml.safe_load(meta['config'][0])
     (
-        output, cpu_time, missing_slice_inds, wcs, position_offset, coadd_dims
+        output, cpu_time, missing_slice_inds, missing_slice_flags,
+        wcs, position_offset, coadd_dims
     ) = _post_process_results(
         outputs=outputs,
         obj_data=multiband_meds.mlist[0].get_cat(),
@@ -796,6 +808,7 @@ def run_metadetect(
         preconfig=preconfig,
         gaia_stars=gaia_stars,
         missing_slice_inds=missing_slice_inds,
+        missing_slice_flags=missing_slice_flags,
         obj_data=multiband_meds.mlist[0].get_cat(),
         buffer_size=int(pz_config['coadd']['buffer_size']),
         central_size=int(pz_config['coadd']['central_size']),

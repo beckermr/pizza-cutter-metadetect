@@ -1,6 +1,6 @@
 import healsparse
 import numpy as np
-import tqdm
+from esutil.pbar import PBar
 
 from .gaia_stars import make_gaia_mask
 
@@ -9,6 +9,8 @@ MASK_NOSLICE = 2**1
 MASK_GAIA_STAR = 2**2
 MASK_SLICEDUPE = 2**3
 MASK_TILEDUPE = 2**4
+MASK_MISSING_BAND = 2**5
+MASK_MISSING_NOSHEAR_DET = 2**6
 
 
 def _wrap_ra(ra):
@@ -182,6 +184,7 @@ def _mask_one_slice_for_missing_data(
     msk_img,
     scol,
     srow,
+    flags,
 ):
     slice_bnds = get_slice_bounds(
         orig_start_col=scol,
@@ -190,16 +193,18 @@ def _mask_one_slice_for_missing_data(
         buffer_size=buffer_size,
         coadd_dims=coadd_dims,
     )
+    flags |= MASK_NOSLICE
     msk_img[
         slice_bnds["min_row"]+srow:slice_bnds["max_row"]+srow,
         slice_bnds["min_col"]+scol:slice_bnds["max_col"]+scol,
-    ] |= MASK_NOSLICE
+    ] |= flags
 
 
 def make_mask(
     *,
     preconfig,
     missing_slice_inds,
+    missing_slice_flags,
     obj_data,
     central_size,
     buffer_size,
@@ -219,6 +224,9 @@ def make_mask(
         entry if gaia_stars is not None.
     missing_slice_inds : list of int
         The indices into `obj_data` indicating slices that did not get measurements.
+    missing_slice_flags : list of int
+        The flags matching indicating why slices in `missing_slice_inds` did not get
+        measurements.
     obj_data : structure numpy array
         The object data from the MEDS file. Used for getting the slice locations
         orig_start_col/orig_start_row. These values are the same across bands and
@@ -280,9 +288,7 @@ def make_mask(
         else:
             _gaia_stars = gaia_stars
 
-        for slice_ind in tqdm.trange(
-            len(obj_data), desc='making GAIA masks', ncols=120
-        ):
+        for slice_ind in PBar(range(len(obj_data)), desc='making GAIA masks'):
             _mask_one_slice_for_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
@@ -297,8 +303,10 @@ def make_mask(
     # then do the slice masks for missing slices
     # these are formally defined in pixels, not ra-dec, though we could likely
     # use healsparse convex polygons instead of the pixels
-    for slice_ind in tqdm.tqdm(
-        missing_slice_inds, desc='making slice masks', ncols=120
+    for slice_ind, slice_flags in PBar(
+        zip(missing_slice_inds, missing_slice_flags),
+        desc='making slice masks',
+        total=len(missing_slice_inds),
     ):
         _mask_one_slice_for_missing_data(
             buffer_size=buffer_size,
@@ -307,6 +315,7 @@ def make_mask(
             msk_img=msk_img,
             scol=obj_data["orig_start_col"][slice_ind, 0],
             srow=obj_data["orig_start_row"][slice_ind, 0],
+            flags=slice_flags,
         )
 
     # we need to cut out the parts of the mask that are outside of the unique
@@ -318,10 +327,9 @@ def make_mask(
     hs_msk = healsparse.HealSparseMap.make_empty(
         128, healpix_nside, np.int32, sentinel=0
     )
-    for yind in tqdm.trange(
-        coadd_dims[0],
+    for yind in PBar(
+        range(coadd_dims[0]),
         desc='cutting tile buffers and making healsparse',
-        ncols=120,
     ):
         y = np.zeros(coadd_dims[1]) + yind
         x = np.arange(coadd_dims[1])

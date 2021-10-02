@@ -232,6 +232,7 @@ def test_mask_one_slice():
     buffer_size = 5
     central_size = 10
     coadd_dims = (100, 100)
+    flags = 2**9
 
     msk_img = np.zeros(coadd_dims, dtype=np.int32)
 
@@ -242,10 +243,12 @@ def test_mask_one_slice():
         msk_img=msk_img,
         scol=15,
         srow=0,
+        flags=flags,
     )
 
-    assert np.all((msk_img[0:15, 20:30] & MASK_NOSLICE) != 0)
-    assert np.all((msk_img[15:, 30:] & MASK_NOSLICE) == 0)
+    for f in [MASK_NOSLICE, flags]:
+        assert np.all((msk_img[0:15, 20:30] & f) != 0)
+        assert np.all((msk_img[15:, 30:] & f) == 0)
 
     _mask_one_slice_for_missing_data(
         buffer_size=buffer_size,
@@ -254,10 +257,12 @@ def test_mask_one_slice():
         msk_img=msk_img,
         scol=15,
         srow=15,
+        flags=flags,
     )
 
-    assert np.all((msk_img[20:30, 20:30] & MASK_NOSLICE) != 0)
-    assert np.all((msk_img[30:, 30:] & MASK_NOSLICE) == 0)
+    for f in [MASK_NOSLICE, flags]:
+        assert np.all((msk_img[20:30, 20:30] & f) != 0)
+        assert np.all((msk_img[30:, 30:] & f) == 0)
 
 
 @pytest.mark.parametrize("msk_exp_rad", [0, 99])
@@ -266,6 +271,7 @@ def test_make_mask(coadd_image_data, msk_exp_rad):
         "gaia_star_masks": {"symmetrize": False, "mask_expand_rad": msk_exp_rad},
     }
     missing_slice_inds = [100, 768]
+    missing_slice_flags = [2**9, 2**11]
     central_size = 100
     buffer_size = 50
     wcs = coadd_image_data["eu_wcs"]
@@ -291,6 +297,7 @@ def test_make_mask(coadd_image_data, msk_exp_rad):
     msk_img, hs_msk = make_mask(
         preconfig=preconfig,
         missing_slice_inds=missing_slice_inds,
+        missing_slice_flags=missing_slice_flags,
         obj_data=obj_data,
         central_size=central_size,
         buffer_size=buffer_size,
@@ -320,6 +327,8 @@ def test_make_mask(coadd_image_data, msk_exp_rad):
     assert np.any((hs_vals & MASK_INTILE) != 0)
     assert np.any((hs_vals & MASK_NOSLICE) != 0)
     assert np.any((hs_vals & MASK_GAIA_STAR) != 0)
+    assert np.any((msk_img & 2**9) != 0)
+    assert np.any((msk_img & 2**11) != 0)
 
     # edges are all zero
     assert np.all(msk_img[:, 0] == 0)
@@ -343,12 +352,29 @@ def test_make_mask(coadd_image_data, msk_exp_rad):
 
     # slice ind at 1, 1 is fully masked except for edges
     assert np.all((msk_img[220:250, 220:250] & MASK_NOSLICE) != 0)
+    assert np.all((msk_img[220:250, 220:250] & 2**9) != 0)
+    assert np.all((msk_img[220:250, 220:250] & 2**11) == 0)
     x, y = np.meshgrid(np.arange(220, 250), np.arange(220, 250))
     x = x.ravel()
     y = y.ravel()
     ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
     _vals = hs_msk.get_values_pos(ra, dec)
     assert np.all((_vals & MASK_NOSLICE) != 0)
+    assert np.all((_vals & 2**9) != 0)
+    assert np.all((_vals & 2**11) == 0)
+
+    # slice ind at 6, 75 is fully masked except for edges
+    assert np.all((msk_img[750:850, 7550:7650] & MASK_NOSLICE) != 0)
+    assert np.all((msk_img[750:850, 7550:7650] & 2**9) == 0)
+    assert np.all((msk_img[750:850, 7550:7650] & 2**11) != 0)
+    x, y = np.meshgrid(np.arange(7550, 7650), np.arange(750, 850))
+    x = x.ravel()
+    y = y.ravel()
+    ra, dec = wcs.image2sky(x+position_offset, y+position_offset)
+    _vals = hs_msk.get_values_pos(ra, dec)
+    assert np.all((_vals & MASK_NOSLICE) != 0)
+    assert np.all((_vals & 2**9) == 0)
+    assert np.all((_vals & 2**11) != 0)
 
     # there is a star so let's check that
     assert np.all((msk_img[260:290, 260:290] & MASK_GAIA_STAR) != 0)
