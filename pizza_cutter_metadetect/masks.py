@@ -306,7 +306,7 @@ def make_mask(
     # these are formally defined in pixels, not ra-dec, though we could likely
     # use healsparse convex polygons instead of the pixels
     for slice_ind, slice_flags in tqdm.tqdm(
-        missing_slice_inds, missing_slice_flags, desc='making slice masks', ncols=120
+        zip(missing_slice_inds, missing_slice_flags), desc='making slice masks', ncols=120
     ):
         _mask_one_slice_for_missing_data(
             buffer_size=buffer_size,
