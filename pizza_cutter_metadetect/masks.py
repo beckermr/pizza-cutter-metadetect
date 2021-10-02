@@ -2,7 +2,7 @@ import healsparse
 import numpy as np
 from esutil.pbar import PBar
 
-from .gaia_stars import make_gaia_mask
+from metadetect.masking import make_foreground_bmask
 
 MASK_INTILE = 2**0
 MASK_NOSLICE = 2**1
@@ -143,18 +143,17 @@ def _mask_one_slice_for_gaia_stars(
 ):
     # compute the gaia mask for one slice
     slice_dim = buffer_size*2 + central_size
-    slice_msk = make_gaia_mask(
-        gaia_stars=gaia_stars,
+    xm = gaia_stars['x'].astype('f8') - scol
+    ym = gaia_stars['y'].astype('f8') - srow
+    rm = gaia_stars['radius_pixels'].astype('f8')
+    slice_msk = make_foreground_bmask(
+        xm=xm,
+        ym=ym,
+        rm=rm,
         dims=(slice_dim, slice_dim),
-        start_row=srow,
-        start_col=scol,
         symmetrize=symmetrize,
+        mask_bit_val=MASK_GAIA_STAR,
     )
-
-    # reset the bits to match our output bits
-    msk = slice_msk != 0
-    slice_msk[:, :] = 0
-    slice_msk[msk] = MASK_GAIA_STAR
 
     # get the final bounds for this slice
     # these bounds are in local slice coords
