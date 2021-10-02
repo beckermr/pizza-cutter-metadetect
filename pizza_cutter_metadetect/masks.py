@@ -1,6 +1,6 @@
 import healsparse
 import numpy as np
-import tqdm
+from esutil.pbar import PBar
 
 from .gaia_stars import make_gaia_mask
 
@@ -288,9 +288,7 @@ def make_mask(
         else:
             _gaia_stars = gaia_stars
 
-        for slice_ind in tqdm.trange(
-            len(obj_data), desc='making GAIA masks', ncols=120
-        ):
+        for slice_ind in PBar(range(len(obj_data)), desc='making GAIA masks'):
             _mask_one_slice_for_gaia_stars(
                 buffer_size=buffer_size,
                 central_size=central_size,
@@ -305,8 +303,10 @@ def make_mask(
     # then do the slice masks for missing slices
     # these are formally defined in pixels, not ra-dec, though we could likely
     # use healsparse convex polygons instead of the pixels
-    for slice_ind, slice_flags in tqdm.tqdm(
-        missing_slice_inds, missing_slice_flags, desc='making slice masks', ncols=120
+    for slice_ind, slice_flags in PBar(
+        zip(missing_slice_inds, missing_slice_flags),
+        desc='making slice masks',
+        total=len(missing_slice_inds),
     ):
         _mask_one_slice_for_missing_data(
             buffer_size=buffer_size,
@@ -327,10 +327,9 @@ def make_mask(
     hs_msk = healsparse.HealSparseMap.make_empty(
         128, healpix_nside, np.int32, sentinel=0
     )
-    for yind in tqdm.trange(
-        coadd_dims[0],
+    for yind in PBar(
+        range(coadd_dims[0]),
         desc='cutting tile buffers and making healsparse',
-        ncols=120,
     ):
         y = np.zeros(coadd_dims[1]) + yind
         x = np.arange(coadd_dims[1])
