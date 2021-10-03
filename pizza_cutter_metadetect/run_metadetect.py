@@ -553,7 +553,7 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
 
     if gaia_stars is not None:
         LOGGER.debug("masking GAIA stars")
-        mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'])
+        mask_gaia_stars(mbobs, gaia_stars, preconfig['gaia_star_masks'], rng)
 
     if preconfig is None:
         return mbobs

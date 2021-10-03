@@ -15,7 +15,7 @@ joblib
 jinja2
 piff
 cfitsio
-metadetect
+metadetect>=0.3.10
 des-pizza-cutter
 des-sxdes
 setuptools_scm
