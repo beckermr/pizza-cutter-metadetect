@@ -235,8 +235,13 @@ def boostrap_m_c(pres, mres):
     return m, merr, c, cerr
 
 
-@pytest.mark.parametrize("band_names", [None, ["f", "j", "p"]])
-def test_make_output_array(band_names):
+@pytest.mark.parametrize("band_names,nbands", [
+    (None, 3),
+    (["f", "j", "p"], 3),
+    (None, 1),
+    (["f"], 1),
+])
+def test_make_output_array(band_names, nbands):
     wcs = WCS(dict(
         naxis1=100,
         naxis2=100,
@@ -270,12 +275,21 @@ def test_make_output_array(band_names):
         ('bmask', 'i4'),
         ("wmomm_g", "f8", (2,)),
         ("wmomm_g_cov", "f8", (2, 2)),
-        ("wmomm_band_flux", "f8", (3,)),
-        ("wmomm_band_flux_err", "f8", (3,)),
         ("wmomm_band_flux_flags", "i4"),
         ("psf_g", "f8", (2,)),
         ("psfrec_g", "f8", (2,)),
     ]
+    if nbands > 1:
+        dtype += [
+            ("wmomm_band_flux", "f8", (nbands,)),
+            ("wmomm_band_flux_err", "f8", (nbands,)),
+        ]
+    else:
+        dtype += [
+            ("wmomm_band_flux", "f8"),
+            ("wmomm_band_flux_err", "f8"),
+        ]
+
     data = np.zeros(10, dtype=dtype)
 
     data['sx_row'] = np.arange(10) + 7
@@ -288,8 +302,12 @@ def test_make_output_array(band_names):
     data['bmask'] = [BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR] + [0]*8
     data['wmomm_g'] = np.arange(10*2).reshape((10, 2)) + 17
     data['wmomm_g_cov'] = np.arange(10*4).reshape((10, 2, 2)) + 23
-    data["wmomm_band_flux"] = np.arange(10*3).reshape((10, 3)) + 37
-    data["wmomm_band_flux_err"] = np.arange(10*3).reshape((10, 3)) + 47
+    if nbands > 1:
+        data["wmomm_band_flux"] = np.arange(10*nbands).reshape((10, nbands)) + 37
+        data["wmomm_band_flux_err"] = np.arange(10*nbands).reshape((10, nbands)) + 47
+    else:
+        data["wmomm_band_flux"] = np.arange(10) + 37
+        data["wmomm_band_flux_err"] = np.arange(10) + 47
     data["wmomm_band_flux_flags"] = np.arange(10) + 53
     data['psf_g'] = np.arange(10*2).reshape((10, 2)) + 177
     data['psfrec_g'] = np.arange(10*2).reshape((10, 2)) + 1777
@@ -343,10 +361,16 @@ def test_make_output_array(band_names):
     else:
         for i, b in enumerate(band_names):
             for tail in ["flux", "flux_err"]:
-                assert np.all(
-                    arr["mdet_%s_%s" % (b, tail)]
-                    == data["wmomm_band_%s" % tail][:, i]
-                )
+                if nbands > 1:
+                    assert np.all(
+                        arr["mdet_%s_%s" % (b, tail)]
+                        == data["wmomm_band_%s" % tail][:, i]
+                    )
+                else:
+                    assert np.all(
+                        arr["mdet_%s_%s" % (b, tail)]
+                        == data["wmomm_band_%s" % tail][:]
+                    )
         assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
 
     # the bounds of the slice are [5,15) for both row and col

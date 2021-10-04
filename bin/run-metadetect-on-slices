@@ -94,6 +94,13 @@ def _process(
             )
         shear_bands = [True if int(s) == 1 else False for s in shear_bands]
 
+    if band_names is not None and len([b for b in band_names]) != len(meds_files):
+        raise RuntimeError(
+            "You mast pass as many band names ('%s') as meds files (%d)" % (
+                band_names, len(meds_files)
+            )
+        )
+
     def _call(output_file, mask_output_file):
         run_metadetect(
             config=_config,
