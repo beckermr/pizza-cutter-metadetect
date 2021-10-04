@@ -139,13 +139,19 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names)
                 ("mdet_%s_flux" % b, fld[1])
                 for b in band_names
             ]
-            assert len(new_fld) == fld[2][0]
+            if len(band_names) == 1:
+                assert len(fld) == 2
+            else:
+                assert len(new_fld) == fld[2][0]
         elif band_names is not None and fld[0] == (mpre + "band_flux_err"):
             new_fld = [
                 ("mdet_%s_flux_err" % b, fld[1])
                 for b in band_names
             ]
-            assert len(new_fld) == fld[2][0]
+            if len(band_names) == 1:
+                assert len(fld) == 2
+            else:
+                assert len(new_fld) == fld[2][0]
         elif band_names is not None and fld[0] == (mpre + "band_flux_flags"):
             new_fld = [("mdet_flux_flags", "i4")]
         elif fld[0] == "psf_g":
@@ -242,11 +248,17 @@ def _make_output_array(
             arr["mdet_g_cov_1_2"] = data[name][:, 0, 1]
             arr["mdet_g_cov_2_2"] = data[name][:, 1, 1]
         elif band_names is not None and name == (mpre + "band_flux"):
-            for i, b in enumerate(band_names):
-                arr["mdet_%s_flux" % b] = data[name][:, i]
+            if len(band_names) == 1:
+                arr["mdet_%s_flux" % band_names[0]] = data[name][:]
+            else:
+                for i, b in enumerate(band_names):
+                    arr["mdet_%s_flux" % b] = data[name][:, i]
         elif band_names is not None and name == (mpre + "band_flux_err"):
-            for i, b in enumerate(band_names):
-                arr["mdet_%s_flux_err" % b] = data[name][:, i]
+            if len(band_names) == 1:
+                arr["mdet_%s_flux_err" % band_names[0]] = data[name][:]
+            else:
+                for i, b in enumerate(band_names):
+                    arr["mdet_%s_flux_err" % b] = data[name][:, i]
         elif band_names is not None and name == (mpre + "band_flux_flags"):
             arr["mdet_flux_flags"] = data[name]
         elif name == "psf_g":
