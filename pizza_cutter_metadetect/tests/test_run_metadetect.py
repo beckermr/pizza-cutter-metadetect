@@ -237,7 +237,7 @@ def boostrap_m_c(pres, mres):
 
 @pytest.mark.parametrize("band_names,nbands,band_inds", [
     (None, 3, [0, 1, 2]),
-    (None, 3, [1, 2, 0])
+    (None, 3, [1, 2, 0]),
     (["f", "j", "p"], 3),
     (None, 3, [0, 1, 2]),
     (["f", "j", "p"], 3, [1, 2, 0]),
