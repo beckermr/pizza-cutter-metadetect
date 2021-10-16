@@ -184,6 +184,8 @@ def _redorder_band_fluxes(model, data, bandinds):
             for iold, inew in enumerate(bandinds):
                 data[mpre+col][:, inew] = old_fluxes[:, iold]
 
+    return data
+
 
 def _make_output_array(
     *,
@@ -248,7 +250,8 @@ def _make_output_array(
     )
     mpre = model + '_'
     arr = np.zeros(data.shape, dtype=new_dt)
-    data = _redorder_band_fluxes(model, data, band_inds)
+    if band_inds is not None:
+        data = _redorder_band_fluxes(model, data, band_inds)
     for name in data.dtype.names:
         if name in arr.dtype.names:
             arr[name] = data[name]

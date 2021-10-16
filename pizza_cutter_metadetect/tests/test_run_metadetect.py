@@ -310,7 +310,7 @@ def test_make_output_array(band_names, nbands, band_inds):
         bfluxerr = np.arange(10*nbands).reshape((10, nbands)) + 47
         for i, j in enumerate(band_inds):
             data["wmomm_band_flux"][:, i] = bflux[:, j]
-            data["wmomm_band_flux_err"] = bfluxerr[:, j]
+            data["wmomm_band_flux_err"][:, i] = bfluxerr[:, j]
     else:
         data["wmomm_band_flux"] = np.arange(10) + 37
         data["wmomm_band_flux_err"] = np.arange(10) + 47
@@ -514,6 +514,7 @@ def test_make_output_array_bounds(
         },
         output_file=output_file,
         band_names=None,
+        band_inds=None,
     )
 
     assert np.all(arr['slice_id'] == slice_id)
