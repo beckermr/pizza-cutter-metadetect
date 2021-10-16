@@ -176,11 +176,20 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names)
     return new_dt
 
 
+def _redorder_band_fluxes(model, data, bandinds):
+    if len(bandinds) > 1:
+        mpre = model + "_"
+        for col in ["band_flux", "band_flux_err"]:
+            old_fluxes = data[mpre+col].copy()
+            for iold, inew in enumerate(bandinds):
+                data[mpre+col][:, inew] = old_fluxes[:, iold]
+
+
 def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info, output_file, band_names,
+    central_size, coadd_dims, model, info, output_file, band_names, band_inds
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -216,9 +225,11 @@ def _make_output_array(
         Dict of tile geom information for getting detections in the tile boundaries.
     output_file : str
         The output filename.
-    band_names : list of str, optional
+    band_names : list of str
         If given, the names of the bands as single strings to use in generating the
         output data.
+    band_inds : list of int
+        The band fluxes are reordered according to these indices.
 
     Returns
     -------
@@ -237,6 +248,7 @@ def _make_output_array(
     )
     mpre = model + '_'
     arr = np.zeros(data.shape, dtype=new_dt)
+    data = _redorder_band_fluxes(model, data, band_inds)
     for name in data.dtype.names:
         if name in arr.dtype.names:
             arr[name] = data[name]
@@ -388,7 +400,7 @@ def _post_process_results(
     dt = 0
     missing_slice_inds = []
     missing_slice_flags = []
-    for res, i, _dt, flags in outputs:
+    for res, i, _dt, flags, bandinds in outputs:
         dt += _dt
         if res is None or res["noshear"] is None or res["noshear"].size == 0:
             if res["noshear"] is None or res["noshear"].size == 0:
@@ -427,6 +439,7 @@ def _post_process_results(
                     info=info,
                     output_file=output_file,
                     band_names=band_names,
+                    bandinds=bandinds,
                 ))
 
     if len(output) > 0:
@@ -578,6 +591,8 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
     _t0 = time.time()
     res = None
     flags = 0
+    bandinds = []
+    nonshear_bandinds = []
     if mbobs is not None:
         if viz_dir is not None:
             _write_mbobs_image(viz_dir, mbobs, i, "_raw")
@@ -594,11 +609,13 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
 
             shear_mbobs = ngmix.MultiBandObsList()
             nonshear_mbobs = ngmix.MultiBandObsList()
-            for obslist, is_shear_band in zip(mbobs, shear_bands):
+            for iband, (obslist, is_shear_band) in enumerate(zip(mbobs, shear_bands)):
                 if is_shear_band:
                     shear_mbobs.append(obslist)
+                    bandinds.append(iband)
                 else:
                     nonshear_mbobs.append(obslist)
+                    nonshear_bandinds.append(iband)
 
             if len(nonshear_mbobs) == 0:
                 nonshear_mbobs = None
@@ -615,7 +632,7 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
         LOGGER.debug("mbobs is None for entry %d", i)
         flags |= MASK_NOSLICE
 
-    return res, i, time.time() - _t0, flags
+    return res, i, time.time() - _t0, flags, bandinds + nonshear_bandinds
 
 
 def get_part_ranges(part, n_parts, size):
