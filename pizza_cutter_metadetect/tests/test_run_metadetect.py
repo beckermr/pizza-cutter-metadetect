@@ -235,13 +235,16 @@ def boostrap_m_c(pres, mres):
     return m, merr, c, cerr
 
 
-@pytest.mark.parametrize("band_names,nbands", [
-    (None, 3),
-    (["f", "j", "p"], 3),
-    (None, 1),
-    (["f"], 1),
+@pytest.mark.parametrize("band_names,nbands,band_inds", [
+    (None, 3, [0, 1, 2]),
+    (None, 3, [1, 2, 0]),
+    (None, 3, [0, 1, 2]),
+    (["f", "j", "p"], 3, [0, 1, 2]),
+    (["f", "j", "p"], 3, [1, 2, 0]),
+    (None, 1, [0]),
+    (["f"], 1, [0]),
 ])
-def test_make_output_array(band_names, nbands):
+def test_make_output_array(band_names, nbands, band_inds):
     wcs = WCS(dict(
         naxis1=100,
         naxis2=100,
@@ -303,8 +306,11 @@ def test_make_output_array(band_names, nbands):
     data['wmomm_g'] = np.arange(10*2).reshape((10, 2)) + 17
     data['wmomm_g_cov'] = np.arange(10*4).reshape((10, 2, 2)) + 23
     if nbands > 1:
-        data["wmomm_band_flux"] = np.arange(10*nbands).reshape((10, nbands)) + 37
-        data["wmomm_band_flux_err"] = np.arange(10*nbands).reshape((10, nbands)) + 47
+        bflux = np.arange(10*nbands).reshape((10, nbands)) + 37
+        bfluxerr = np.arange(10*nbands).reshape((10, nbands)) + 47
+        for i, j in enumerate(band_inds):
+            data["wmomm_band_flux"][:, i] = bflux[:, j]
+            data["wmomm_band_flux_err"][:, i] = bfluxerr[:, j]
     else:
         data["wmomm_band_flux"] = np.arange(10) + 37
         data["wmomm_band_flux_err"] = np.arange(10) + 47
@@ -333,6 +339,7 @@ def test_make_output_array(band_names, nbands):
         },
         output_file=output_file,
         band_names=band_names,
+        band_inds=band_inds,
     )
 
     if band_names is not None:
@@ -507,6 +514,7 @@ def test_make_output_array_bounds(
         },
         output_file=output_file,
         band_names=None,
+        band_inds=None,
     )
 
     assert np.all(arr['slice_id'] == slice_id)
