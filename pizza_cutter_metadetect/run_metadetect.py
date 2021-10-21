@@ -403,7 +403,7 @@ def _post_process_results(
     dt = 0
     missing_slice_inds = []
     missing_slice_flags = []
-    for res, i, _dt, flags, bandinds in outputs:
+    for res, i, _dt, flags, band_inds in outputs:
         dt += _dt
         if res is None or res["noshear"] is None or res["noshear"].size == 0:
             if res["noshear"] is None or res["noshear"].size == 0:
@@ -442,7 +442,7 @@ def _post_process_results(
                     info=info,
                     output_file=output_file,
                     band_names=band_names,
-                    bandinds=bandinds,
+                    band_inds=band_inds,
                 ))
 
     if len(output) > 0:
