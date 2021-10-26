@@ -3,7 +3,6 @@ import json
 import time
 import datetime
 import logging
-import copy
 import subprocess
 
 import yaml
@@ -23,6 +22,7 @@ from .masks import (
     make_mask, get_slice_bounds, in_unique_coadd_tile_region,
     MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR,
     MASK_NOSLICE, MASK_MISSING_BAND, MASK_MISSING_NOSHEAR_DET,
+    MASK_MISSING_BAND_PREPROC,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
@@ -101,7 +101,7 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     return fname
 
 
-def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names):
+def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
     new_dt = [
         ('slice_id', 'i8'),
         ('mdet_step', 'U7'),
@@ -120,58 +120,62 @@ def _make_output_dtype(*, old_dt, model, filename_len, tilename_len, band_names)
         ('mask_flags', 'i4'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
-    ]
-    skip_cols = ["sx_row", "sx_col", "sx_row_noshear", "sx_col_noshear"]
-    mpre = model + '_'
-    for fld in old_dt:
-        if fld[0] in skip_cols:
-            continue
-        elif fld[0] == (mpre + "g"):
-            new_fld = [("mdet_g_1", "f8"), ("mdet_g_2", "f8")]
-        elif fld[0] == (mpre + "g_cov"):
-            new_fld = [
-                ("mdet_g_cov_1_1", "f8"),
-                ("mdet_g_cov_1_2", "f8"),
-                ("mdet_g_cov_2_2", "f8")
-            ]
-        elif band_names is not None and fld[0] == (mpre + "band_flux"):
-            new_fld = [
-                ("mdet_%s_flux" % b, fld[1])
-                for b in band_names
-            ]
-            if len(band_names) == 1:
-                assert len(fld) == 2
-            else:
-                assert len(new_fld) == fld[2][0]
-        elif band_names is not None and fld[0] == (mpre + "band_flux_err"):
-            new_fld = [
-                ("mdet_%s_flux_err" % b, fld[1])
-                for b in band_names
-            ]
-            if len(band_names) == 1:
-                assert len(fld) == 2
-            else:
-                assert len(new_fld) == fld[2][0]
-        elif band_names is not None and fld[0] == (mpre + "band_flux_flags"):
-            new_fld = [("mdet_flux_flags", "i4")]
-        elif fld[0] == "psf_g":
-            new_fld = [
-                ("psf_g_1", fld[1]),
-                ("psf_g_2", fld[1]),
-            ]
-        elif fld[0] == "psfrec_g":
-            new_fld = [
-                ("psfrec_g_1", fld[1]),
-                ("psfrec_g_2", fld[1]),
-            ]
-        elif fld[0].startswith(mpre):
-            new_fld = copy.deepcopy(list(fld))
-            new_fld[0] = "mdet_" + fld[0][len(mpre):]
-            new_fld = [tuple(new_fld)]
-        else:
-            new_fld = [fld]
 
-        new_dt += new_fld
+        # columns from mdet
+        # we flatten shears and matrices
+        ("flags", 'i4'),
+
+        ('psf_flags', 'i4'),
+        ('psf_g_1', 'f8'),
+        ('psf_g_2', 'f8'),
+        ('psf_T', 'f8'),
+
+        ("mdet_flags", 'i4'),
+        ("mdet_s2n", "f8"),
+        ("mdet_g_1", "f8"),
+        ("mdet_g_2", "f8"),
+        ("mdet_g_cov_1_1", "f8"),
+        ("mdet_g_cov_1_2", "f8"),
+        ("mdet_g_cov_2_2", "f8"),
+
+        ("mdet_T", "f8"),
+        ("mdet_T_err", "f8"),
+        ("mdet_T_ratio", "f8"),
+
+        ('ormask', 'i4'),
+        ('mfrac', 'f4'),
+        ('bmask', 'i4'),
+
+        # this is the original PSF
+        ('psfrec_flags', 'i4'),
+        ('psfrec_g_1', 'f8'),
+        ('psfrec_g_2', 'f8'),
+        ('psfrec_T', 'f8'),
+    ]
+
+    new_dt += [
+        ("mdet_flux_flags", 'i4'),
+    ]
+    if band_names is not None:
+        new_dt += [
+            ("mdet_%s_flux" % b, "f8")
+            for b in band_names
+        ]
+        new_dt += [
+            ("mdet_%s_flux_err" % b, "f8")
+            for b in band_names
+        ]
+    else:
+        if nbands > 1:
+            new_dt += [
+                ("mdet_flux", "f8", nbands),
+                ("mdet_flux_err", "f8", nbands),
+            ]
+        else:
+            new_dt += [
+                ("mdet_flux", "f8"),
+                ("mdet_flux_err", "f8"),
+            ]
 
     return new_dt
 
@@ -237,54 +241,111 @@ def _make_output_array(
     -------
     array with new fields
     """
+    mpre = model + '_'
+
+    # get # of bands
+    name = mpre + "band_flux"
+    if len(data[name].shape) == 1:
+        nbands = 1
+    else:
+        nbands = data[name].shape[1]
+
+    if band_inds is not None:
+        data = _redorder_band_fluxes(model, data, band_inds)
+        assert len(band_inds) == nbands, (
+            "The # of band inds %s doesn't match the number of bands %d." % (
+                band_inds,
+                nbands,
+            )
+        )
+
+    if band_names is not None:
+        assert len(band_names) == nbands, (
+            "The # of band names %s doesn't match the number of bands %d." % (
+                band_inds,
+                nbands,
+            )
+        )
+
     filename = os.path.basename(output_file)
     if filename.endswith(".fz"):
         filename = filename[:-len(".fz")]
     tilename = filename.split('_')[0]
     new_dt = _make_output_dtype(
-        old_dt=data.dtype.descr,
-        model=model,
+        nbands=nbands,
         filename_len=len(filename),
         tilename_len=len(tilename),
         band_names=band_names,
     )
-    mpre = model + '_'
+
     arr = np.zeros(data.shape, dtype=new_dt)
-    if band_inds is not None:
-        data = _redorder_band_fluxes(model, data, band_inds)
-    for name in data.dtype.names:
-        if name in arr.dtype.names:
-            arr[name] = data[name]
-        elif name == (mpre + "g"):
-            arr["mdet_g_1"] = data[name][:, 0]
-            arr["mdet_g_2"] = data[name][:, 1]
-        elif name == (mpre + "g_cov"):
-            arr["mdet_g_cov_1_1"] = data[name][:, 0, 0]
-            arr["mdet_g_cov_1_2"] = data[name][:, 0, 1]
-            arr["mdet_g_cov_2_2"] = data[name][:, 1, 1]
-        elif band_names is not None and name == (mpre + "band_flux"):
-            if len(band_names) == 1:
-                arr["mdet_%s_flux" % band_names[0]] = data[name][:]
+    for name in arr.dtype.names:
+        if arr[name].dtype.kind == "f":
+            arr[name] = np.nan
+
+    # fill simple columns
+    for col in [
+        "flags",
+        "psf_flags",
+        "psf_T",
+        "ormask",
+        "mfrac",
+        "bmask",
+        "psfrec_flags",
+        "psfrec_T",
+    ]:
+        if col in data.dtype.names:
+            arr[col] = data[col]
+
+    # now fill the model dependent ones
+    for col in [
+        "mdet_flags",
+        "mdet_s2n",
+        "mdet_T",
+        "mdet_T_err",
+        "mdet_T_ratio",
+    ]:
+        data_col = mpre + col[len("mdet_"):]
+        if data_col in data.dtype.names:
+            arr[col] = data[data_col]
+
+    # do the shears
+    if "psf_g" in data.dtype.names:
+        arr["psf_g_1"] = data["psf_g"][:, 0]
+        arr["psf_g_2"] = data["psf_g"][:, 1]
+    if "psfrec_g" in data.dtype.names:
+        arr["psfrec_g_1"] = data["psfrec_g"][:, 0]
+        arr["psfrec_g_2"] = data["psfrec_g"][:, 1]
+
+    if mpre + "g" in data.dtype.names:
+        arr["mdet_g_1"] = data[mpre + "g"][:, 0]
+        arr["mdet_g_2"] = data[mpre + "g"][:, 1]
+
+    if mpre + "g_cov" in data.dtype.names:
+        arr["mdet_g_cov_1_1"] = data[mpre + "g_cov"][:, 0, 0]
+        arr["mdet_g_cov_1_2"] = data[mpre + "g_cov"][:, 0, 1]
+        arr["mdet_g_cov_2_2"] = data[mpre + "g_cov"][:, 1, 1]
+
+    # fluxes
+    if mpre + "band_flux_flags" in data.dtype.names:
+        arr["mdet_flux_flags"] = data[mpre + "band_flux_flags"]
+
+    if (
+        mpre + "band_flux" in data.dtype.names
+        and mpre + "band_flux_err" in data.dtype.names
+    ):
+        if band_names is not None:
+            if nbands == 1:
+                arr["mdet_%s_flux" % band_names[0]] = data[mpre + "band_flux"][:]
+                arr["mdet_%s_flux_err" % band_names[0]] \
+                    = data[mpre + "band_flux_err"][:]
             else:
                 for i, b in enumerate(band_names):
-                    arr["mdet_%s_flux" % b] = data[name][:, i]
-        elif band_names is not None and name == (mpre + "band_flux_err"):
-            if len(band_names) == 1:
-                arr["mdet_%s_flux_err" % band_names[0]] = data[name][:]
-            else:
-                for i, b in enumerate(band_names):
-                    arr["mdet_%s_flux_err" % b] = data[name][:, i]
-        elif band_names is not None and name == (mpre + "band_flux_flags"):
-            arr["mdet_flux_flags"] = data[name]
-        elif name == "psf_g":
-            arr["psf_g_1"] = data[name][:, 0]
-            arr["psf_g_2"] = data[name][:, 1]
-        elif name == "psfrec_g":
-            arr["psfrec_g_1"] = data[name][:, 0]
-            arr["psfrec_g_2"] = data[name][:, 1]
-        elif name.startswith(mpre):
-            new_name = "mdet_" + name[len(mpre):]
-            arr[new_name] = data[name]
+                    arr["mdet_%s_flux" % b] = data[mpre + "band_flux"][:, i]
+                    arr["mdet_%s_flux_err" % b] = data[mpre + "band_flux_err"][:, i]
+        else:
+            arr["mdet_flux"] = data[mpre + "band_flux"]
+            arr["mdet_flux_err"] = data[mpre + "band_flux_err"]
 
     arr['slice_id'] = slice_id
     arr['mdet_step'] = mdet_step
@@ -386,8 +447,8 @@ def _get_radec(*,
     ra, dec arrays
     """
 
-    trow = row + orig_start_row + position_offset
-    tcol = col + orig_start_col + position_offset
+    trow = np.array(row + orig_start_row + position_offset).astype(np.float64)
+    tcol = np.array(col + orig_start_col + position_offset).astype(np.float64)
     ra, dec = wcs.image2sky(x=tcol, y=trow)
     return ra, dec
 
@@ -601,29 +662,47 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
             _write_mbobs_image(viz_dir, mbobs, i, "_raw")
 
         rng = np.random.RandomState(seed=seed)
-        mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
-
-        if viz_dir is not None:
-            _write_mbobs_image(viz_dir, mbobs, i, "_preproc")
-
         minnum = min([len(olist) for olist in mbobs])
         if minnum > 0:
-            LOGGER.debug("running mdet for entry %d", i)
+            LOGGER.debug("preprocessing entry %d", i)
+            mbobs = _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng)
 
-            shear_mbobs = ngmix.MultiBandObsList()
-            nonshear_mbobs = ngmix.MultiBandObsList()
-            for iband, (obslist, is_shear_band) in enumerate(zip(mbobs, shear_bands)):
-                if is_shear_band:
-                    shear_mbobs.append(obslist)
-                    bandinds.append(iband)
-                else:
-                    nonshear_mbobs.append(obslist)
-                    nonshear_bandinds.append(iband)
+            if viz_dir is not None:
+                _write_mbobs_image(viz_dir, mbobs, i, "_preproc")
 
-            if len(nonshear_mbobs) == 0:
-                nonshear_mbobs = None
+            minnum = min([len(olist) for olist in mbobs])
+            if minnum > 0:
+                LOGGER.debug("running mdet for entry %d", i)
 
-            res = do_metadetect(config, shear_mbobs, rng, nonshear_mbobs=nonshear_mbobs)
+                shear_mbobs = ngmix.MultiBandObsList()
+                nonshear_mbobs = ngmix.MultiBandObsList()
+                for iband, (obslist, is_shear_band) in enumerate(
+                    zip(mbobs, shear_bands)
+                ):
+                    if is_shear_band:
+                        shear_mbobs.append(obslist)
+                        bandinds.append(iband)
+                    else:
+                        nonshear_mbobs.append(obslist)
+                        nonshear_bandinds.append(iband)
+
+                if len(nonshear_mbobs) == 0:
+                    nonshear_mbobs = None
+
+                res = do_metadetect(
+                    config,
+                    shear_mbobs,
+                    rng,
+                    nonshear_mbobs=nonshear_mbobs,
+                )
+            else:
+                LOGGER.debug(
+                    "mbobs has no data for entry %d in one or more "
+                    "bands after pre-processing: %s",
+                    i,
+                    [len(olist) for olist in mbobs],
+                )
+                flags |= MASK_MISSING_BAND_PREPROC
         else:
             LOGGER.debug(
                 "mbobs has no data for entry %d in one or more bands: %s",
