@@ -22,7 +22,7 @@ from .masks import (
     make_mask, get_slice_bounds, in_unique_coadd_tile_region,
     MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR,
     MASK_NOSLICE, MASK_MISSING_BAND, MASK_MISSING_NOSHEAR_DET,
-    MASK_MISSING_BAND_PREPROC,
+    MASK_MISSING_BAND_PREPROC, MASK_MISSING_MDET_RES,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
@@ -467,7 +467,9 @@ def _post_process_results(
     for res, i, _dt, flags, band_inds in outputs:
         dt += _dt
         if res is None or res["noshear"] is None or res["noshear"].size == 0:
-            if res["noshear"] is None or res["noshear"].size == 0:
+            if res is None:
+                flags |= MASK_MISSING_MDET_RES
+            else:
                 flags |= MASK_MISSING_NOSHEAR_DET
             missing_slice_inds.append(i)
             missing_slice_flags.append(flags)
