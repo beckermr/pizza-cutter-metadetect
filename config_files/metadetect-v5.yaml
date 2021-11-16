@@ -50,3 +50,6 @@ pizza-cutter-preprocessing:
     apodize:
       ap_rad: 1
     mask_expand_rad: 16
+
+  slice_apodization:
+    ap_rad: 1
