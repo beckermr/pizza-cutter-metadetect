@@ -11,6 +11,7 @@ import numpy as np
 import esutil as eu
 import fitsio
 import ngmix
+import healpy as hp
 
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
@@ -118,6 +119,8 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ('slice_y_det', 'f8'),
         ('slice_x_det', 'f8'),
         ('mask_flags', 'i4'),
+        ('hpix_16384', 'i8'),
+        ('hpix_16384_det', 'i8'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
 
@@ -372,6 +375,9 @@ def _make_output_array(
         position_offset=position_offset,
         wcs=wcs,
     )
+    arr['hpix_16384'] = hp.ang2pix(
+        16384, arr['ra'], arr['dec'], nest=True, lonlat=True
+    )
     arr['ra_det'], arr['dec_det'] = _get_radec(
         row=arr['slice_y_det'],
         col=arr['slice_x_det'],
@@ -379,6 +385,9 @@ def _make_output_array(
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
+    )
+    arr['hpix_16384_det'] = hp.ang2pix(
+        16384, arr['ra_det'], arr['dec_det'], nest=True, lonlat=True
     )
 
     slice_bnds = get_slice_bounds(
