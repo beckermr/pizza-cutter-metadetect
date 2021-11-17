@@ -5,6 +5,7 @@ import ngmix
 import galsim
 import pytest
 import numpy as np
+import healpy as hp
 from esutil.wcsutil import WCS
 
 from numpy.testing import assert_array_equal
@@ -404,8 +405,16 @@ def test_make_output_array(band_names, nbands, band_inds):
     )
     assert np.all(arr['ra'] == ra)
     assert np.all(arr['dec'] == dec)
+    assert np.all(arr['hpix_16384'] == hp.ang2pix(
+            16384, ra, dec, nest=True, lonlat=True
+        )
+    )
     assert np.all(arr['ra_det'] == ura)
     assert np.all(arr['dec_det'] == udec)
+    assert np.all(arr['hpix_16384_det'] == hp.ang2pix(
+            16384, ura, udec, nest=True, lonlat=True
+        )
+    )
 
     assert np.all(arr['slice_y_det'] == data['sx_row'])
     assert np.all(arr['slice_x_det'] == data['sx_col'])

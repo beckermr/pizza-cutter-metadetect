@@ -11,10 +11,13 @@ import numpy as np
 import esutil as eu
 import fitsio
 import ngmix
+import healpy as hp
 
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
+from metadetect.masking import apply_apodization_corrections
 from pizza_cutter.files import expandpath
+from pizza_cutter.des_pizza_cutter import BMASK_SLICE_APODIZED
 from .gaia_stars import (
     load_gaia_stars, mask_gaia_stars, BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR,
 )
@@ -23,6 +26,7 @@ from .masks import (
     MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR,
     MASK_NOSLICE, MASK_MISSING_BAND, MASK_MISSING_NOSHEAR_DET,
     MASK_MISSING_BAND_PREPROC, MASK_MISSING_MDET_RES,
+    MASK_MDET_FAILED,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
@@ -118,6 +122,8 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ('slice_y_det', 'f8'),
         ('slice_x_det', 'f8'),
         ('mask_flags', 'i4'),
+        ('hpix_16384', 'i8'),
+        ('hpix_16384_det', 'i8'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
 
@@ -372,6 +378,9 @@ def _make_output_array(
         position_offset=position_offset,
         wcs=wcs,
     )
+    arr['hpix_16384'] = hp.ang2pix(
+        16384, arr['ra'], arr['dec'], nest=True, lonlat=True
+    )
     arr['ra_det'], arr['dec_det'] = _get_radec(
         row=arr['slice_y_det'],
         col=arr['slice_x_det'],
@@ -379,6 +388,9 @@ def _make_output_array(
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
+    )
+    arr['hpix_16384_det'] = hp.ang2pix(
+        16384, arr['ra_det'], arr['dec_det'], nest=True, lonlat=True
     )
 
     slice_bnds = get_slice_bounds(
@@ -649,7 +661,12 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
     if preconfig is None:
         return mbobs
     else:
-        # TODO do something here?
+        if "slice_apodization" in preconfig:
+            apply_apodization_corrections(
+                mbobs=mbobs,
+                ap_rad=preconfig["slice_apodization"]["ap_rad"],
+                mask_bit_val=BMASK_SLICE_APODIZED,
+            )
         return mbobs
 
 
@@ -691,12 +708,16 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
                 if len(nonshear_mbobs) == 0:
                     nonshear_mbobs = None
 
-                res = do_metadetect(
-                    config,
-                    shear_mbobs,
-                    rng,
-                    nonshear_mbobs=nonshear_mbobs,
-                )
+                try:
+                    res = do_metadetect(
+                        config,
+                        shear_mbobs,
+                        rng,
+                        nonshear_mbobs=nonshear_mbobs,
+                    )
+                except Exception as e:
+                    LOGGER.debug("metadetect failed for slice %d: %s", i, repr(e))
+                    flags |= MASK_MDET_FAILED
             else:
                 LOGGER.debug(
                     "mbobs has no data for entry %d in one or more "
