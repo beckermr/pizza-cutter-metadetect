@@ -718,6 +718,15 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
         assert np.all(arr["nepoch_eff"] == np.array([b + 20 for b in range(nbands)]))
     else:
         for i, b in enumerate(band_names):
+            assert np.all(
+                arr["nepoch_%s" % b]
+                == np.array([b + 10 for b in range(nbands)])[i:i+1]
+            )
+            assert np.all(
+                arr["nepoch_eff_%s" % b]
+                == np.array([b + 20 for b in range(nbands)])[i:i+1]
+            )
+
             for tail in ["flux", "flux_err"]:
                 if nbands > 1:
                     assert_array_equal(
