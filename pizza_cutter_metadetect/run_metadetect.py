@@ -171,16 +171,22 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
             ("mdet_%s_flux_err" % b, "f8")
             for b in band_names
         ]
+        new_dt += [
+            ("nepoch_%s" % b, "i4")
+            for b in band_names
+        ]
     else:
         if nbands > 1:
             new_dt += [
                 ("mdet_flux", "f8", nbands),
                 ("mdet_flux_err", "f8", nbands),
+                ("nepoch", "i4", nbands),
             ]
         else:
             new_dt += [
                 ("mdet_flux", "f8"),
                 ("mdet_flux_err", "f8"),
+                ("nepoch", "i4"),
             ]
 
     return new_dt
@@ -201,7 +207,8 @@ def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info, output_file, band_names, band_inds
+    central_size, coadd_dims, model, info, output_file, band_names, band_inds,
+    nepochs_per_band,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -242,6 +249,8 @@ def _make_output_array(
         output data.
     band_inds : list of int
         The band fluxes are reordered according to these indices.
+    nepochs_per_band : list of int
+        The number of coadded epochs per band.
 
     Returns
     -------
@@ -352,6 +361,19 @@ def _make_output_array(
         else:
             arr["mdet_flux"] = data[mpre + "band_flux"]
             arr["mdet_flux_err"] = data[mpre + "band_flux_err"]
+
+    assert len(nepochs_per_band) == nbands, (
+        "The length of the band nepochs list %s doesn't match the "
+        "number of bands %d." % (
+            nepochs_per_band,
+            nbands,
+        )
+    )
+    if band_names is not None:
+        for b, ne in zip(band_names, nepochs_per_band):
+            arr["npeoch_%s" % b] = ne
+    else:
+        arr["nepochs"][:] = np.array(nepochs_per_band, dtype="i4")
 
     arr['slice_id'] = slice_id
     arr['mdet_step'] = mdet_step
@@ -466,11 +488,13 @@ def _get_radec(*,
 
 
 def _post_process_results(
-    *, outputs, obj_data, image_info, buffer_size, central_size, config, info,
+    *, outputs, obj_data_list, image_info, buffer_size, central_size, config, info,
     output_file, band_names,
 ):
     # post process results
     wcs_cache = {}
+
+    obj_data = obj_data_list[0]
 
     output = []
     dt = 0
@@ -518,6 +542,7 @@ def _post_process_results(
                     output_file=output_file,
                     band_names=band_names,
                     band_inds=band_inds,
+                    nepochs_per_band=[od["nepoch"][i] for od in obj_data_list],
                 ))
 
     if len(output) > 0:
@@ -927,7 +952,7 @@ def run_metadetect(
         wcs, position_offset, coadd_dims
     ) = _post_process_results(
         outputs=outputs,
-        obj_data=multiband_meds.mlist[0].get_cat(),
+        obj_data_list=[mle.get_cat() for mle in multiband_meds.mlist],
         image_info=multiband_meds.mlist[0].get_image_info(),
         buffer_size=int(pz_config['coadd']['buffer_size']),
         central_size=int(pz_config['coadd']['central_size']),
