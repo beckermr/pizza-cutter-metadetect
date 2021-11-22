@@ -191,6 +191,7 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
             new_dt += [
                 ("mdet_flux", "f8"),
                 ("mdet_flux_err", "f8"),
+                ("nepoch", "i4"),
                 ("nepoch_eff", "i4"),
             ]
 
@@ -385,9 +386,9 @@ def _make_output_array(
     )
     if band_names is not None:
         for b, ne in zip(band_names, nepoch_per_band):
-            arr["npeoch_%s" % b] = ne
+            arr["nepoch_%s" % b] = ne
         for b, ne in zip(band_names, nepoch_eff_per_band):
-            arr["npeoch_eff_%s" % b] = ne
+            arr["nepoch_eff_%s" % b] = ne
     else:
         arr["nepoch"][:] = np.array(nepoch_per_band, dtype="i4")
         arr["nepoch_eff"][:] = np.array(nepoch_eff_per_band, dtype="i4")

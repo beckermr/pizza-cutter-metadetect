@@ -347,6 +347,8 @@ def test_make_output_array(band_names, nbands, band_inds):
         output_file=output_file,
         band_names=band_names,
         band_inds=band_inds,
+        nepoch_per_band=[b + 10 for b in range(nbands)],
+        nepoch_eff_per_band=[b + 20 for b in range(nbands)],
     )
 
     if band_names is not None:
@@ -372,8 +374,19 @@ def test_make_output_array(band_names, nbands, band_inds):
         assert np.all(arr["mdet_flux"] == data["wmomm_band_flux"])
         assert np.all(arr["mdet_flux_err"] == data["wmomm_band_flux_err"])
         assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
+        assert np.all(arr["nepoch"] == np.array([b + 10 for b in range(nbands)]))
+        assert np.all(arr["nepoch_eff"] == np.array([b + 20 for b in range(nbands)]))
     else:
         for i, b in enumerate(band_names):
+            assert np.all(
+                arr["nepoch_%s" % b]
+                == np.array([b + 10 for b in range(nbands)])[i:i+1]
+            )
+            assert np.all(
+                arr["nepoch_eff_%s" % b]
+                == np.array([b + 20 for b in range(nbands)])[i:i+1]
+            )
+
             for tail in ["flux", "flux_err"]:
                 if nbands > 1:
                     assert np.all(
@@ -530,6 +543,8 @@ def test_make_output_array_bounds(
         output_file=output_file,
         band_names=None,
         band_inds=None,
+        nepoch_per_band=[10],
+        nepoch_eff_per_band=[20],
     )
 
     assert np.all(arr['slice_id'] == slice_id)
@@ -672,6 +687,8 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
         output_file=output_file,
         band_names=band_names,
         band_inds=band_inds,
+        nepoch_per_band=[b + 10 for b in range(nbands)],
+        nepoch_eff_per_band=[b + 20 for b in range(nbands)],
     )
 
     if band_names is not None:
@@ -697,6 +714,8 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
         assert_array_equal(arr["mdet_flux"], data["wmom_band_flux"])
         assert_array_equal(arr["mdet_flux_err"], data["wmom_band_flux_err"])
         assert_array_equal(arr["mdet_flux_flags"], data["wmom_band_flux_flags"])
+        assert np.all(arr["nepoch"] == np.array([b + 10 for b in range(nbands)]))
+        assert np.all(arr["nepoch_eff"] == np.array([b + 20 for b in range(nbands)]))
     else:
         for i, b in enumerate(band_names):
             for tail in ["flux", "flux_err"]:
