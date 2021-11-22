@@ -175,18 +175,23 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
             ("nepoch_%s" % b, "i4")
             for b in band_names
         ]
+        new_dt += [
+            ("nepoch_eff_%s" % b, "i4")
+            for b in band_names
+        ]
     else:
         if nbands > 1:
             new_dt += [
                 ("mdet_flux", "f8", nbands),
                 ("mdet_flux_err", "f8", nbands),
                 ("nepoch", "i4", nbands),
+                ("nepoch_eff", "i4", nbands),
             ]
         else:
             new_dt += [
                 ("mdet_flux", "f8"),
                 ("mdet_flux_err", "f8"),
-                ("nepoch", "i4"),
+                ("nepoch_eff", "i4"),
             ]
 
     return new_dt
@@ -208,7 +213,7 @@ def _make_output_array(
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
     central_size, coadd_dims, model, info, output_file, band_names, band_inds,
-    nepochs_per_band,
+    nepoch_per_band, nepoch_eff_per_band,
 ):
     """
     Add columns to the output data array. These include the slice id, metacal
@@ -249,8 +254,10 @@ def _make_output_array(
         output data.
     band_inds : list of int
         The band fluxes are reordered according to these indices.
-    nepochs_per_band : list of int
+    nepoch_per_band : list of int
         The number of coadded epochs per band.
+    nepoch_eff_per_band : list of int
+        The effective number of coadded epochs per band.
 
     Returns
     -------
@@ -362,18 +369,28 @@ def _make_output_array(
             arr["mdet_flux"] = data[mpre + "band_flux"]
             arr["mdet_flux_err"] = data[mpre + "band_flux_err"]
 
-    assert len(nepochs_per_band) == nbands, (
+    assert len(nepoch_per_band) == nbands, (
         "The length of the band nepochs list %s doesn't match the "
         "number of bands %d." % (
-            nepochs_per_band,
+            nepoch_per_band,
+            nbands,
+        )
+    )
+    assert len(nepoch_eff_per_band) == nbands, (
+        "The length of the effective band nepochs list %s doesn't match the "
+        "number of bands %d." % (
+            nepoch_eff_per_band,
             nbands,
         )
     )
     if band_names is not None:
-        for b, ne in zip(band_names, nepochs_per_band):
+        for b, ne in zip(band_names, nepoch_per_band):
             arr["npeoch_%s" % b] = ne
+        for b, ne in zip(band_names, nepoch_eff_per_band):
+            arr["npeoch_eff_%s" % b] = ne
     else:
-        arr["nepochs"][:] = np.array(nepochs_per_band, dtype="i4")
+        arr["nepoch"][:] = np.array(nepoch_per_band, dtype="i4")
+        arr["nepoch_eff"][:] = np.array(nepoch_eff_per_band, dtype="i4")
 
     arr['slice_id'] = slice_id
     arr['mdet_step'] = mdet_step
@@ -542,7 +559,8 @@ def _post_process_results(
                     output_file=output_file,
                     band_names=band_names,
                     band_inds=band_inds,
-                    nepochs_per_band=[od["nepoch"][i] for od in obj_data_list],
+                    nepoch_per_band=[od["nepoch"][i] for od in obj_data_list],
+                    nepoch_eff_per_band=[od["nepoch_eff"][i] for od in obj_data_list],
                 ))
 
     if len(output) > 0:
