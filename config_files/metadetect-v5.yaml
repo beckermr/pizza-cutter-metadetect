@@ -5,17 +5,6 @@ metacal:
   types: [noshear, 1p, 1m, 2p, 2m]
   use_noise_image: True
 
-psf:
-  lm_pars:
-    maxfev: 2000
-    ftol: 1.0e-05
-    xtol: 1.0e-05
-  model: gauss
-
-  # we try many times because if this fails we get no psf info
-  # for the entire patch
-  ntry: 10
-
 # use defaults in sxdes package
 sx: null
 
