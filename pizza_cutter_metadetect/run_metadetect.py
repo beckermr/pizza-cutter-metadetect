@@ -449,53 +449,29 @@ def _make_output_array(
         coadd_dims=coadd_dims
     )
 
-    # noshear position mask flags
-    msk = (
-        (arr['slice_y'] >= slice_bnds["min_row"])
-        & (arr['slice_y'] < slice_bnds["max_row"])
-        & (arr['slice_x'] >= slice_bnds["min_col"])
-        & (arr['slice_x'] < slice_bnds["max_col"])
-    )
-    arr["mask_flags"][~msk] |= MASK_SLICEDUPE
-    msk = in_unique_coadd_tile_region(
-        ra=arr['ra'],
-        dec=arr['dec'],
-        crossra0=info['crossra0'],
-        udecmin=info['udecmin'],
-        udecmax=info['udecmax'],
-        uramin=info['uramin'],
-        uramax=info['uramax'],
-    )
-    arr["mask_flags"][~msk] |= MASK_TILEDUPE
-    msk = (
-        ((arr['bmask'] & BMASK_EXPAND_GAIA_STAR) != 0)
-        | ((arr['bmask'] & BMASK_GAIA_STAR) != 0)
-    )
-    arr["mask_flags"][msk] |= MASK_GAIA_STAR
-
-    # sheard position mask flags
-    msk = (
-        (arr['slice_y_det'] >= slice_bnds["min_row"])
-        & (arr['slice_y_det'] < slice_bnds["max_row"])
-        & (arr['slice_x_det'] >= slice_bnds["min_col"])
-        & (arr['slice_x_det'] < slice_bnds["max_col"])
-    )
-    arr["mask_flags_det"][~msk] |= MASK_SLICEDUPE
-    msk = in_unique_coadd_tile_region(
-        ra=arr['ra_det'],
-        dec=arr['dec_det'],
-        crossra0=info['crossra0'],
-        udecmin=info['udecmin'],
-        udecmax=info['udecmax'],
-        uramin=info['uramin'],
-        uramax=info['uramax'],
-    )
-    arr["mask_flags_det"][~msk] |= MASK_TILEDUPE
-    msk = (
-        ((arr['bmask_det'] & BMASK_EXPAND_GAIA_STAR) != 0)
-        | ((arr['bmask_det'] & BMASK_GAIA_STAR) != 0)
-    )
-    arr["mask_flags_det"][msk] |= MASK_GAIA_STAR
+    for tail in ["", "_det"]:
+        msk = (
+            (arr['slice_y' + tail] >= slice_bnds["min_row"])
+            & (arr['slice_y' + tail] < slice_bnds["max_row"])
+            & (arr['slice_x' + tail] >= slice_bnds["min_col"])
+            & (arr['slice_x' + tail] < slice_bnds["max_col"])
+        )
+        arr["mask_flags" + tail][~msk] |= MASK_SLICEDUPE
+        msk = in_unique_coadd_tile_region(
+            ra=arr['ra' + tail],
+            dec=arr['dec' + tail],
+            crossra0=info['crossra0'],
+            udecmin=info['udecmin'],
+            udecmax=info['udecmax'],
+            uramin=info['uramin'],
+            uramax=info['uramax'],
+        )
+        arr["mask_flags" + tail][~msk] |= MASK_TILEDUPE
+        msk = (
+            ((arr['bmask' + tail] & BMASK_EXPAND_GAIA_STAR) != 0)
+            | ((arr['bmask' + tail] & BMASK_GAIA_STAR) != 0)
+        )
+        arr["mask_flags" + tail][msk] |= MASK_GAIA_STAR
 
     return arr
 
