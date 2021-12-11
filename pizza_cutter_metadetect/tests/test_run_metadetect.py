@@ -282,7 +282,7 @@ def test_make_output_array(band_names, nbands, band_inds):
         ('a', 'i8'),
         ('wmom_blah', 'f8'),
         ('wmomm_blah', 'f8'),
-        ('bmask', 'i4'),
+        ('bmask_noshear', 'i4'),
         ("wmomm_g", "f8", (2,)),
         ("wmomm_g_cov", "f8", (2, 2)),
         ("wmomm_band_flux_flags", "i4"),
@@ -309,7 +309,7 @@ def test_make_output_array(band_names, nbands, band_inds):
     data['a'] = np.arange(10)
     data['wmomm_blah'] = np.arange(10) + 23.5
     data['wmom_blah'] = np.arange(10) + 314234.5
-    data['bmask'] = [BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR] + [0]*8
+    data['bmask_noshear'] = [BMASK_GAIA_STAR, BMASK_EXPAND_GAIA_STAR] + [0]*8
     data['wmomm_g'] = np.arange(10*2).reshape((10, 2)) + 17
     data['wmomm_g_cov'] = np.arange(10*4).reshape((10, 2, 2)) + 23
     if nbands > 1:
@@ -404,15 +404,15 @@ def test_make_output_array(band_names, nbands, band_inds):
     # thus only first two elements of sx_col_noshear pass since they are
     # from np.arange(10) + 13 = [13, 14, 15, ...]
     assert np.array_equal(
-        arr["mask_flags"],
+        arr["mask_flags_noshear"],
         [MASK_GAIA_STAR] * 2 + [MASK_SLICEDUPE] * 8,
     )
 
-    ra, dec = wcs.image2sky(
+    ura, udec = wcs.image2sky(
         x=data['sx_col_noshear'] + orig_start_col + position_offset,
         y=data['sx_row_noshear'] + orig_start_row + position_offset,
     )
-    ura, udec = wcs.image2sky(
+    ra, dec = wcs.image2sky(
         x=data['sx_col'] + orig_start_col + position_offset,
         y=data['sx_row'] + orig_start_row + position_offset,
     )
@@ -422,17 +422,17 @@ def test_make_output_array(band_names, nbands, band_inds):
             16384, ra, dec, nest=True, lonlat=True
         )
     )
-    assert np.all(arr['ra_det'] == ura)
-    assert np.all(arr['dec_det'] == udec)
-    assert np.all(arr['hpix_16384_det'] == hp.ang2pix(
+    assert np.all(arr['ra_noshear'] == ura)
+    assert np.all(arr['dec_noshear'] == udec)
+    assert np.all(arr['hpix_16384_noshear'] == hp.ang2pix(
             16384, ura, udec, nest=True, lonlat=True
         )
     )
 
-    assert np.all(arr['slice_y_det'] == data['sx_row'])
-    assert np.all(arr['slice_x_det'] == data['sx_col'])
-    assert np.all(arr['slice_y'] == data['sx_row_noshear'])
-    assert np.all(arr['slice_x'] == data['sx_col_noshear'])
+    assert np.all(arr['slice_y'] == data['sx_row'])
+    assert np.all(arr['slice_x'] == data['sx_col'])
+    assert np.all(arr['slice_y_noshear'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_x_noshear'] == data['sx_col_noshear'])
 
     assert 'a' not in arr.dtype.names
     assert 'wmom_blah' not in arr.dtype.names
@@ -560,25 +560,25 @@ def test_make_output_array_bounds(
     )
     flags = np.zeros(21, dtype=np.int32) + MASK_SLICEDUPE
     flags[msk] = 0
-    assert np.array_equal(arr["mask_flags"], flags)
+    assert np.array_equal(arr["mask_flags_noshear"], flags)
 
-    ra, dec = wcs.image2sky(
+    ura, udec = wcs.image2sky(
         x=data['sx_col_noshear'] + orig_start_col + position_offset,
         y=data['sx_row_noshear'] + orig_start_row + position_offset,
     )
-    ura, udec = wcs.image2sky(
+    ra, dec = wcs.image2sky(
         x=data['sx_col'] + orig_start_col + position_offset,
         y=data['sx_row'] + orig_start_row + position_offset,
     )
     assert np.all(arr['ra'] == ra)
     assert np.all(arr['dec'] == dec)
-    assert np.all(arr['ra_det'] == ura)
-    assert np.all(arr['dec_det'] == udec)
+    assert np.all(arr['ra_noshear'] == ura)
+    assert np.all(arr['dec_noshear'] == udec)
 
-    assert np.all(arr['slice_y_det'] == data['sx_row'])
-    assert np.all(arr['slice_x_det'] == data['sx_col'])
-    assert np.all(arr['slice_y'] == data['sx_row_noshear'])
-    assert np.all(arr['slice_x'] == data['sx_col_noshear'])
+    assert np.all(arr['slice_y'] == data['sx_row'])
+    assert np.all(arr['slice_x'] == data['sx_col'])
+    assert np.all(arr['slice_y_noshear'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_x_noshear'] == data['sx_col_noshear'])
 
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
@@ -742,7 +742,7 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
 
     assert np.array_equal(arr["mask_flags"], [MASK_SLICEDUPE] * len(arr))
 
-    ra, dec = wcs.image2sky(
+    ura, udec = wcs.image2sky(
         x=(
             data['sx_col_noshear']
             + orig_start_col
@@ -754,7 +754,7 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
             + position_offset
         ).astype(np.float64),
     )
-    ura, udec = wcs.image2sky(
+    ra, dec = wcs.image2sky(
         x=(
             data['sx_col']
             + orig_start_col
@@ -768,13 +768,13 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
     )
     assert np.allclose(arr['ra'], ra, atol=1e-8)
     assert np.allclose(arr['dec'], dec, atol=1e-8)
-    assert np.allclose(arr['ra_det'], ura, atol=1e-8)
-    assert np.allclose(arr['dec_det'], udec, atol=1e-8)
+    assert np.allclose(arr['ra_noshear'], ura, atol=1e-8)
+    assert np.allclose(arr['dec_noshear'], udec, atol=1e-8)
 
-    assert np.all(arr['slice_y_det'] == data['sx_row'])
-    assert np.all(arr['slice_x_det'] == data['sx_col'])
-    assert np.all(arr['slice_y'] == data['sx_row_noshear'])
-    assert np.all(arr['slice_x'] == data['sx_col_noshear'])
+    assert np.all(arr['slice_y'] == data['sx_row'])
+    assert np.all(arr['slice_x'] == data['sx_col'])
+    assert np.all(arr['slice_y_noshear'] == data['sx_row_noshear'])
+    assert np.all(arr['slice_x_noshear'] == data['sx_col_noshear'])
 
     for col in [
         "flags",

@@ -111,18 +111,18 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ('mdet_step', 'U7'),
         ('ra', 'f8'),
         ('dec', 'f8'),
-        ('ra_det', 'f8'),
-        ('dec_det', 'f8'),
-        ('y_det', 'f8'),
-        ('x_det', 'f8'),
+        ('ra_noshear', 'f8'),
+        ('dec_noshear', 'f8'),
+        ('y_noshear', 'f8'),
+        ('x_noshear', 'f8'),
         ('y', 'f8'),
         ('x', 'f8'),
         ('slice_y', 'f8'),
         ('slice_x', 'f8'),
-        ('slice_y_det', 'f8'),
-        ('slice_x_det', 'f8'),
+        ('slice_y_noshear', 'f8'),
+        ('slice_x_noshear', 'f8'),
         ('hpix_16384', 'i8'),
-        ('hpix_16384_det', 'i8'),
+        ('hpix_16384_noshear', 'i8'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
 
@@ -152,10 +152,10 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ('bmask', 'i4'),
         ('mask_flags', 'i4'),
 
-        ('ormask_det', 'i4'),
-        ('mfrac_det', 'f4'),
-        ('bmask_det', 'i4'),
-        ('mask_flags_det', 'i4'),
+        ('ormask_noshear', 'i4'),
+        ('mfrac_noshear', 'f4'),
+        ('bmask_noshear', 'i4'),
+        ('mask_flags_noshear', 'i4'),
 
         # this is the original PSF
         ('psfrec_flags', 'i4'),
@@ -319,9 +319,9 @@ def _make_output_array(
         "ormask",
         "mfrac",
         "bmask",
-        "ormask_det",
-        "mfrac_det",
-        "bmask_det",
+        "ormask_noshear",
+        "mfrac_noshear",
+        "bmask_noshear",
         "psfrec_flags",
         "psfrec_T",
     ]:
@@ -406,17 +406,17 @@ def _make_output_array(
     arr['filename'] = filename
     arr['tilename'] = tilename
 
-    # we swap names here calling the sheared pos _det
-    arr['slice_y'] = data['sx_row_noshear']
-    arr['slice_x'] = data['sx_col_noshear']
-    arr['slice_y_det'] = data['sx_row']
-    arr['slice_x_det'] = data['sx_col']
+    # deal with positions
+    arr['slice_y_noshear'] = data['sx_row_noshear']
+    arr['slice_x_noshear'] = data['sx_col_noshear']
+    arr['slice_y'] = data['sx_row']
+    arr['slice_x'] = data['sx_col']
 
     # these are in global coadd coords
-    arr['y'] = orig_start_row + data['sx_row_noshear']
-    arr['x'] = orig_start_col + data['sx_col_noshear']
-    arr['y_det'] = orig_start_row + data['sx_row']
-    arr['x_det'] = orig_start_col + data['sx_col']
+    arr['y'] = orig_start_row + data['sx_row']
+    arr['x'] = orig_start_col + data['sx_col']
+    arr['y_noshear'] = orig_start_row + data['sx_row_noshear']
+    arr['x_noshear'] = orig_start_col + data['sx_col_noshear']
 
     arr['ra'], arr['dec'] = _get_radec(
         row=arr['slice_y'],
@@ -429,16 +429,16 @@ def _make_output_array(
     arr['hpix_16384'] = hp.ang2pix(
         16384, arr['ra'], arr['dec'], nest=True, lonlat=True
     )
-    arr['ra_det'], arr['dec_det'] = _get_radec(
-        row=arr['slice_y_det'],
-        col=arr['slice_x_det'],
+    arr['ra_noshear'], arr['dec_noshear'] = _get_radec(
+        row=arr['slice_y_noshear'],
+        col=arr['slice_x_noshear'],
         orig_start_row=orig_start_row,
         orig_start_col=orig_start_col,
         position_offset=position_offset,
         wcs=wcs,
     )
-    arr['hpix_16384_det'] = hp.ang2pix(
-        16384, arr['ra_det'], arr['dec_det'], nest=True, lonlat=True
+    arr['hpix_16384_noshear'] = hp.ang2pix(
+        16384, arr['ra_noshear'], arr['dec_noshear'], nest=True, lonlat=True
     )
 
     slice_bnds = get_slice_bounds(
@@ -449,7 +449,7 @@ def _make_output_array(
         coadd_dims=coadd_dims
     )
 
-    for tail in ["", "_det"]:
+    for tail in ["", "_noshear"]:
         msk = (
             (arr['slice_y' + tail] >= slice_bnds["min_row"])
             & (arr['slice_y' + tail] < slice_bnds["max_row"])
