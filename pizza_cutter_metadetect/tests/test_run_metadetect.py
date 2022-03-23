@@ -435,7 +435,7 @@ def test_make_output_array(band_names, nbands):
         ('bmask_noshear', 'i4'),
         ("wmomm_g", "f8", (2,)),
         ("wmomm_g_cov", "f8", (2, 2)),
-        ("wmomm_band_flux_flags", "i4"),
+
         ("psf_g", "f8", (2,)),
         ("psfrec_g", "f8", (2,)),
     ]
@@ -443,11 +443,13 @@ def test_make_output_array(band_names, nbands):
         dtype += [
             ("wmomm_band_flux", "f8", (nbands,)),
             ("wmomm_band_flux_err", "f8", (nbands,)),
+            ("wmomm_band_flux_flags", "i4", (nbands,)),
         ]
     else:
         dtype += [
             ("wmomm_band_flux", "f8"),
             ("wmomm_band_flux_err", "f8"),
+            ("wmomm_band_flux_flags", "i4"),
         ]
 
     data = np.zeros(10, dtype=dtype)
@@ -465,13 +467,15 @@ def test_make_output_array(band_names, nbands):
     if nbands > 1:
         bflux = np.arange(10*nbands).reshape((10, nbands)) + 37
         bfluxerr = np.arange(10*nbands).reshape((10, nbands)) + 47
+        bfluxflags = np.arange(10*nbands).reshape((10, nbands)) + 47
         for i in range(nbands):
             data["wmomm_band_flux"][:, i] = bflux[:, i]
             data["wmomm_band_flux_err"][:, i] = bfluxerr[:, i]
+            data["wmomm_band_flux_flags"][:, i] = bfluxflags[:, i]
     else:
         data["wmomm_band_flux"] = np.arange(10) + 37
         data["wmomm_band_flux_err"] = np.arange(10) + 47
-    data["wmomm_band_flux_flags"] = np.arange(10) + 53
+        data["wmomm_band_flux_flags"] = np.arange(10) + 53
     data['psf_g'] = np.arange(10*2).reshape((10, 2)) + 177
     data['psfrec_g'] = np.arange(10*2).reshape((10, 2)) + 1777
 
