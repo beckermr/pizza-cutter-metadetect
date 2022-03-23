@@ -1,5 +1,6 @@
 import time
 import joblib
+import pprint
 
 import ngmix
 import galsim
@@ -590,7 +591,7 @@ def test_make_output_array(band_names, nbands):
     assert "mdet_band_flux_err" not in arr.dtype.names
     assert "mdet_band_flux_flags" not in arr.dtype.names
 
-    print(arr.dtype.names)
+    print("\n" + pprint.pformat(arr.dtype.names))
 
 
 @pytest.mark.parametrize(
@@ -858,6 +859,7 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert_array_equal(arr["mdet_flux_flags"], data["wmom_band_flux_flags"])
 
     assert np.array_equal(arr["mask_flags"], [MASK_SLICEDUPE] * len(arr))
+    assert np.array_equal(arr["mask_flags_noshear"], [MASK_SLICEDUPE] * len(arr))
 
     ura, udec = wcs.image2sky(
         x=(
@@ -901,6 +903,9 @@ def test_make_output_array_with_sim(band_names, nbands):
         "ormask",
         "mfrac",
         "bmask",
+        "ormask_noshear",
+        "mfrac_noshear",
+        "bmask_noshear",
         "psfrec_flags",
         "psfrec_T",
     ]:
@@ -938,7 +943,7 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert "mdet_band_flux_err" not in arr.dtype.names
     assert "mdet_band_flux_flags" not in arr.dtype.names
 
-    print(arr.dtype.names)
+    print("\n" + pprint.pformat(arr.dtype.names))
 
 
 @pytest.mark.parametrize("wmul", [

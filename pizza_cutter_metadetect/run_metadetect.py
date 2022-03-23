@@ -169,38 +169,22 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
     new_dt += [
         ("mdet_flux_flags", 'i4'),
     ]
-    if band_names is not None:
-        new_dt += [
-            ("mdet_%s_flux" % b, "f8")
-            for b in band_names
-        ]
-        new_dt += [
-            ("mdet_%s_flux_err" % b, "f8")
-            for b in band_names
-        ]
-        new_dt += [
-            ("nepoch_%s" % b, "i4")
-            for b in band_names
-        ]
-        new_dt += [
-            ("nepoch_eff_%s" % b, "i4")
-            for b in band_names
-        ]
-    else:
-        if nbands > 1:
-            new_dt += [
-                ("mdet_flux", "f8", nbands),
-                ("mdet_flux_err", "f8", nbands),
-                ("nepoch", "i4", nbands),
-                ("nepoch_eff", "i4", nbands),
-            ]
-        else:
-            new_dt += [
-                ("mdet_flux", "f8"),
-                ("mdet_flux_err", "f8"),
-                ("nepoch", "i4"),
-                ("nepoch_eff", "i4"),
-            ]
+    new_dt += [
+        ("mdet_%s_flux" % b, "f8")
+        for b in band_names
+    ]
+    new_dt += [
+        ("mdet_%s_flux_err" % b, "f8")
+        for b in band_names
+    ]
+    new_dt += [
+        ("nepoch_%s" % b, "i4")
+        for b in band_names
+    ]
+    new_dt += [
+        ("nepoch_eff_%s" % b, "i4")
+        for b in band_names
+    ]
 
     return new_dt
 
