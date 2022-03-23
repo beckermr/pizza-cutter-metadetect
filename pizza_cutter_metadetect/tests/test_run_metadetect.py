@@ -15,6 +15,7 @@ from ..run_metadetect import (
     _make_output_array,
     _do_metadetect,
     _truncate_negative_mfrac_weight,
+    _get_shearband_combs,
 )
 from ..masks import (
     MASK_SLICEDUPE, MASK_GAIA_STAR,
@@ -368,6 +369,13 @@ def test_do_metadetect_flagging():
         CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
     )
     assert (res[3] & MASK_MISSING_BAND) != 0
+
+
+def test_get_shearband_combs():
+    assert _get_shearband_combs(1) == [[0]]
+    assert _get_shearband_combs(2) == [[0, 1], [0], [1]]
+    assert _get_shearband_combs(3) == [[0, 1, 2], [1, 2], [0], [1], [2]]
+    assert _get_shearband_combs(4) == [[0, 1, 2, 3], [1, 2, 3], [0], [1], [2], [3]]
 
 
 @pytest.mark.parametrize("band_names,nbands", [
