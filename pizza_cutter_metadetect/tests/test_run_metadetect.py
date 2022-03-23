@@ -531,7 +531,7 @@ def test_make_output_array(band_names, nbands):
             == np.array([b + 20 for b in range(nbands)])[i:i+1]
         )
 
-        for tail in ["flux", "flux_err"]:
+        for tail in ["flux", "flux_err", "flux_flags"]:
             if nbands > 1:
                 assert np.all(
                     arr["mdet_%s_%s" % (b, tail)]
@@ -542,7 +542,6 @@ def test_make_output_array(band_names, nbands):
                     arr["mdet_%s_%s" % (b, tail)]
                     == data["wmomm_band_%s" % tail][:]
                 )
-    assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
 
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
@@ -753,7 +752,7 @@ def test_make_output_array_bounds(
 
 
 @pytest.mark.parametrize("band_names,nbands", [
-    (["f", "j", "p"], 3),
+    (None, 3),
     (["f", "j", "p"], 3),
     (None, 1),
     (["f"], 1),
@@ -853,7 +852,7 @@ def test_make_output_array_with_sim(band_names, nbands):
             == np.array([b + 20 for b in range(nbands)])[i:i+1]
         )
 
-        for tail in ["flux", "flux_err"]:
+        for tail in ["flux", "flux_err", "flux_flags"]:
             if nbands > 1:
                 assert_array_equal(
                     arr["mdet_%s_%s" % (b, tail)],
@@ -864,7 +863,6 @@ def test_make_output_array_with_sim(band_names, nbands):
                     arr["mdet_%s_%s" % (b, tail)],
                     data["wmom_band_%s" % tail][:]
                 )
-    assert_array_equal(arr["mdet_flux_flags"], data["wmom_band_flux_flags"])
 
     assert np.array_equal(arr["mask_flags"], [MASK_SLICEDUPE] * len(arr))
     assert np.array_equal(arr["mask_flags_noshear"], [MASK_SLICEDUPE] * len(arr))
@@ -951,7 +949,8 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert "mdet_band_flux_err" not in arr.dtype.names
     assert "mdet_band_flux_flags" not in arr.dtype.names
 
-    print("\n" + pprint.pformat(arr.dtype.names))
+    print("  mdet data:\n" + pprint.pformat(data.dtype.names))
+    print("munged data:\n" + pprint.pformat(arr.dtype.names))
 
 
 @pytest.mark.parametrize("wmul", [

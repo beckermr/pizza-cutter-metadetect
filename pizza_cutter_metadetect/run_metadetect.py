@@ -167,7 +167,8 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
     ]
 
     new_dt += [
-        ("mdet_flux_flags", 'i4'),
+        ("mdet_%s_flux_flags" % b, "i4")
+        for b in band_names
     ]
     new_dt += [
         ("mdet_%s_flux" % b, "f8")
@@ -320,14 +321,14 @@ def _make_output_array(
     arr["mdet_g_cov_2_2"] = data[mpre + "g_cov"][:, 1, 1]
 
     # fluxes
-    arr["mdet_flux_flags"] = data[mpre + "band_flux_flags"]
-
     if nbands == 1:
+        arr["mdet_%s_flux_flags" % band_names[0]] = data[mpre + "band_flux_flags"][:]
         arr["mdet_%s_flux" % band_names[0]] = data[mpre + "band_flux"][:]
         arr["mdet_%s_flux_err" % band_names[0]] \
             = data[mpre + "band_flux_err"][:]
     else:
         for i, b in enumerate(band_names):
+            arr["mdet_%s_flux_flags" % b] = data[mpre + "band_flux_flags"][:, i]
             arr["mdet_%s_flux" % b] = data[mpre + "band_flux"][:, i]
             arr["mdet_%s_flux_err" % b] = data[mpre + "band_flux_err"][:, i]
 
