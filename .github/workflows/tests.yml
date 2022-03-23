@@ -35,6 +35,9 @@ jobs:
             pytest \
             "numba!=0.54.0"
 
+          conda uninstall --force metadetect --yes
+          pip install git+https://github.com/esheldon/metadetect.git@all-meas
+
       - name: lint
         shell: bash -l {0}
         run: |
