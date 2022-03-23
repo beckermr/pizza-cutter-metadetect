@@ -35,7 +35,6 @@ def _process(
     meds_range,
     tmpdir,
     n_jobs,
-    shear_bands,
     viz_dir,
     band_names,
 ):
@@ -77,23 +76,6 @@ def _process(
         start = 0
         num = mbmeds.size
 
-    if shear_bands is None:
-        shear_bands = [True] * len(meds_files)
-    else:
-        shear_bands = shear_bands.strip().split(",")
-        shear_bands = [s.strip() for s in shear_bands]
-        if len(shear_bands) != len(meds_files):
-            raise RuntimeError(
-                "The --shear-bands input list must be the same length as the "
-                "number of input MEDS files."
-            )
-        if not all([s in ["0", "1"] for s in shear_bands]):
-            raise ValueError(
-                "You must pass either 1 (use for shear) or 0 (flux only) "
-                "for each entry in --shear-bands."
-            )
-        shear_bands = [True if int(s) == 1 else False for s in shear_bands]
-
     if band_names is not None and len([b for b in band_names]) != len(meds_files):
         raise RuntimeError(
             "You mast pass as many band names ('%s') as meds files (%d)" % (
@@ -112,7 +94,6 @@ def _process(
             start=start,
             num=num,
             n_jobs=n_jobs,
-            shear_bands=shear_bands,
             verbose=verbose,
             viz_dir=viz_dir,
             band_names=(
@@ -197,16 +178,6 @@ def _process(
     '--n-jobs', default=1, type=int,
     help=('the number of parallel jobs to use. defaults to 1.'))
 @click.option(
-    '--shear-bands',
-    default=None,
-    type=str,
-    help=(
-        'A comma-separated string of 1 or 0 indicating if the given input '
-        'MEDS file is to be used for shear measurements (1) or just fluxes (0). '
-        'Default if not given is to use all bands for shear.'
-    ),
-)
-@click.option(
     '--band-names',
     default=None,
     type=str,
@@ -220,7 +191,7 @@ def _process(
     help="If set, write images of the slices to the given location.")
 def main(
     meds_files, config, output_path, seed, use_tmpdir, part, log_level,
-    meds_range, tmpdir, n_jobs, shear_bands, viz_dir, band_names,
+    meds_range, tmpdir, n_jobs, viz_dir, band_names,
 ):
     """Run metdetect on MEDS_FILES."""
 
@@ -239,7 +210,6 @@ def main(
             meds_range=meds_range,
             tmpdir=tmpdir,
             n_jobs=n_jobs,
-            shear_bands=shear_bands,
             viz_dir=viz_dir,
             band_names=band_names,
         )
