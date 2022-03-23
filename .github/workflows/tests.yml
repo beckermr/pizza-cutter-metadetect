@@ -35,6 +35,7 @@ jobs:
             pytest \
             "numba!=0.54.0"
 
+          # FIXME
           conda uninstall --force metadetect --yes
           pip install git+https://github.com/esheldon/metadetect.git@all-meas
 
