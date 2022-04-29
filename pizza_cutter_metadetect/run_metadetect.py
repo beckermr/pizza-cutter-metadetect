@@ -477,8 +477,11 @@ def _post_process_results(
     missing_slice_flags = []
     for res, i, _dt, flags in outputs:
         dt += _dt
-        if res is None:
-            flags |= MASK_MISSING_MDET_RES
+        if res is None or res["noshear"] is None or res["noshear"].size == 0:
+            if res is None:
+                flags |= MASK_MISSING_MDET_RES
+            else:
+                flags |= MASK_MISSING_NOSHEAR_DET
             missing_slice_inds.append(i)
             missing_slice_flags.append(flags)
             continue
