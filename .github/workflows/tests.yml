@@ -37,7 +37,7 @@ jobs:
 
           # FIXME
           conda uninstall --force metadetect --yes
-          pip install git+https://github.com/esheldon/metadetect.git@main
+          pip install git+https://github.com/esheldon/metadetect.git@master
 
       - name: lint
         shell: bash -l {0}
