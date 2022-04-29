@@ -23,7 +23,7 @@ from .gaia_stars import (
 from .masks import (
     make_mask, get_slice_bounds, in_unique_coadd_tile_region,
     MASK_TILEDUPE, MASK_SLICEDUPE, MASK_GAIA_STAR,
-    MASK_NOSLICE, MASK_MISSING_BAND,
+    MASK_NOSLICE, MASK_MISSING_BAND, MASK_MISSING_NOSHEAR_DET,
     MASK_MISSING_BAND_PREPROC, MASK_MISSING_MDET_RES,
     MASK_MDET_FAILED,
 )
