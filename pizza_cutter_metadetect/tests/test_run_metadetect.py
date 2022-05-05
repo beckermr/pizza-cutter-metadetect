@@ -1,5 +1,6 @@
 import time
 import joblib
+import pprint
 
 import ngmix
 import galsim
@@ -14,6 +15,7 @@ from ..run_metadetect import (
     _make_output_array,
     _do_metadetect,
     _truncate_negative_mfrac_weight,
+    _get_shearband_combs,
 )
 from ..masks import (
     MASK_SLICEDUPE, MASK_GAIA_STAR,
@@ -179,38 +181,39 @@ def make_sim(
     return mbobs
 
 
-def _shear_cuts(arr):
+def _shear_cuts(arr, sb):
     msk = (
         (arr['flags'] == 0)
         & (arr['wmom_s2n'] > 10)
         & (arr['wmom_T_ratio'] > 1.2)
+        & (arr['shear_bands'] == sb)
     )
     return msk
 
 
-def _meas_shear_data(res):
-    msk = _shear_cuts(res['noshear'])
+def _meas_shear_data(res, sb):
+    msk = _shear_cuts(res['noshear'], sb)
     g1 = np.mean(res['noshear']['wmom_g'][msk, 0])
     g2 = np.mean(res['noshear']['wmom_g'][msk, 1])
 
-    msk = _shear_cuts(res['1p'])
+    msk = _shear_cuts(res['1p'], sb)
     g1_1p = np.mean(res['1p']['wmom_g'][msk, 0])
-    msk = _shear_cuts(res['1m'])
+    msk = _shear_cuts(res['1m'], sb)
     g1_1m = np.mean(res['1m']['wmom_g'][msk, 0])
-    R11 = (g1_1p - g1_1m) / 0.02
+    r11 = (g1_1p - g1_1m) / 0.02
 
-    msk = _shear_cuts(res['2p'])
+    msk = _shear_cuts(res['2p'], sb)
     g2_2p = np.mean(res['2p']['wmom_g'][msk, 1])
-    msk = _shear_cuts(res['2m'])
+    msk = _shear_cuts(res['2m'], sb)
     g2_2m = np.mean(res['2m']['wmom_g'][msk, 1])
-    R22 = (g2_2p - g2_2m) / 0.02
+    r22 = (g2_2p - g2_2m) / 0.02
 
     dt = [
         ('g1', 'f8'),
         ('g2', 'f8'),
         ('R11', 'f8'),
         ('R22', 'f8')]
-    return np.array([(g1, g2, R11, R22)], dtype=dt)
+    return np.array([(g1, g2, r11, r22)], dtype=dt)
 
 
 def _bootstrap_stat(d1, d2, func, seed, nboot=500):
@@ -242,16 +245,146 @@ def boostrap_m_c(pres, mres):
     return m, merr, c, cerr
 
 
-@pytest.mark.parametrize("band_names,nbands,band_inds", [
-    (None, 3, [0, 1, 2]),
-    (None, 3, [1, 2, 0]),
-    (None, 3, [0, 1, 2]),
-    (["f", "j", "p"], 3, [0, 1, 2]),
-    (["f", "j", "p"], 3, [1, 2, 0]),
-    (None, 1, [0]),
-    (["f"], 1, [0]),
+def run_sim(seed, mdet_seed):
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+
+    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
+    _pres = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+    if _pres is None:
+        return None
+
+    mbobs = make_sim(seed=seed, nbands=3, g1=-0.02, g2=0.00, ngrid=7, snr=1e6)
+    _mres = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+    if _mres is None:
+        return None
+
+    # do some of the tests here due to joblib running
+    # checking one is enough
+    assert _mres[0]['noshear']['wmom_band_flux'][0].shape == (3,)
+
+    return _meas_shear_data(_pres[0], "012"), _meas_shear_data(_mres[0], "012")
+
+
+def test_do_metadetect():
+    ntrial = 10
+    rng = np.random.RandomState(seed=116)
+    seeds = rng.randint(low=1, high=2**29, size=ntrial)
+    mdet_seeds = rng.randint(low=1, high=2**29, size=ntrial)
+
+    tm0 = time.time()
+
+    print("\n")
+
+    jobs = [
+        joblib.delayed(run_sim)(
+            seeds[i], mdet_seeds[i],
+        )
+        for i in range(ntrial)
+    ]
+    outputs = joblib.Parallel(n_jobs=-1, verbose=100, backend='loky')(jobs)
+
+    pres = []
+    mres = []
+    for out in outputs:
+        if out is None:
+            continue
+        pres.append(out[0])
+        mres.append(out[1])
+
+    total_time = time.time()-tm0
+    print("time per:", total_time/ntrial, flush=True)
+
+    pres = np.concatenate(pres)
+    mres = np.concatenate(mres)
+    m, merr, c, cerr = boostrap_m_c(pres, mres)
+
+    print(
+        (
+            "\n\nm [1e-3, 3sigma]: %s +/- %s"
+            "\nc [1e-5, 3sigma]: %s +/- %s"
+        ) % (
+            m/1e-3,
+            3*merr/1e-3,
+            c/1e-5,
+            3*cerr/1e-5,
+        ),
+        flush=True,
+    )
+
+    assert np.abs(m) < max(1e-3, 3*merr)
+    assert np.abs(c) < max(1e-6, 3*cerr)
+
+
+def test_do_metadetect_pos_mfrac():
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+    mdet_seed = 12
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
+    )
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+
+    for key in ['noshear', '1p', '1m', '2p', '2m']:
+        assert np.all(res[0][key]["mfrac"] >= 0)
+
+
+def test_do_metadetect_flagging():
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+    mdet_seed = 12
+
+    res = _do_metadetect(
+        CONFIG, None, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+    assert (res[3] & MASK_NOSLICE) != 0
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
+    )
+    del mbobs[0][0]
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+    assert (res[3] & MASK_MISSING_BAND) != 0
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
+    )
+    del mbobs[-1][0]
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+    )
+    assert (res[3] & MASK_MISSING_BAND) != 0
+
+
+def test_get_shearband_combs():
+    assert _get_shearband_combs(1) == [[0]]
+    assert _get_shearband_combs(2) == [[0, 1], [0], [1]]
+    assert _get_shearband_combs(3) == [[0, 1, 2], [1, 2], [0], [1], [2]]
+    assert _get_shearband_combs(4) == [[0, 1, 2, 3], [1, 2, 3], [0], [1], [2], [3]]
+
+
+@pytest.mark.parametrize("band_names,nbands", [
+    (None, 3),
+    (["f", "j", "p"], 3),
+    (None, 1),
+    (["f"], 1),
 ])
-def test_make_output_array(band_names, nbands, band_inds):
+def test_make_output_array(band_names, nbands):
     wcs = WCS(dict(
         naxis1=100,
         naxis2=100,
@@ -275,6 +408,23 @@ def test_make_output_array(band_names, nbands, band_inds):
     output_file = "/bdsjd/tname_blah.fits.fz"
 
     dtype = [
+        ('flags', 'i4'),
+        ('wmomm_flags', 'i4'),
+        ('wmomm_T_flags', 'i4'),
+        ('wmomm_s2n', 'f8'),
+        ('wmomm_T', 'f8'),
+        ('wmomm_T_err', 'f8'),
+        ('wmomm_T_ratio', 'f8'),
+        ('shear_bands', 'U6'),
+        ('psf_flags', 'i4'),
+        ('psf_T', 'f8'),
+        ('psfrec_flags', 'i4'),
+        ('psfrec_T', 'f8'),
+        ('ormask', 'i4'),
+        ('bmask', 'i4'),
+        ('mfrac', 'f8'),
+        ('ormask_noshear', 'i4'),
+        ('mfrac_noshear', 'f8'),
         ('sx_row', 'f8'),
         ('sx_col', 'f8'),
         ('sx_row_noshear', 'f8'),
@@ -285,7 +435,7 @@ def test_make_output_array(band_names, nbands, band_inds):
         ('bmask_noshear', 'i4'),
         ("wmomm_g", "f8", (2,)),
         ("wmomm_g_cov", "f8", (2, 2)),
-        ("wmomm_band_flux_flags", "i4"),
+
         ("psf_g", "f8", (2,)),
         ("psfrec_g", "f8", (2,)),
     ]
@@ -293,11 +443,13 @@ def test_make_output_array(band_names, nbands, band_inds):
         dtype += [
             ("wmomm_band_flux", "f8", (nbands,)),
             ("wmomm_band_flux_err", "f8", (nbands,)),
+            ("wmomm_band_flux_flags", "i4", (nbands,)),
         ]
     else:
         dtype += [
             ("wmomm_band_flux", "f8"),
             ("wmomm_band_flux_err", "f8"),
+            ("wmomm_band_flux_flags", "i4"),
         ]
 
     data = np.zeros(10, dtype=dtype)
@@ -315,13 +467,15 @@ def test_make_output_array(band_names, nbands, band_inds):
     if nbands > 1:
         bflux = np.arange(10*nbands).reshape((10, nbands)) + 37
         bfluxerr = np.arange(10*nbands).reshape((10, nbands)) + 47
-        for i, j in enumerate(band_inds):
-            data["wmomm_band_flux"][:, i] = bflux[:, j]
-            data["wmomm_band_flux_err"][:, i] = bfluxerr[:, j]
+        bfluxflags = np.arange(10*nbands).reshape((10, nbands)) + 47
+        for i in range(nbands):
+            data["wmomm_band_flux"][:, i] = bflux[:, i]
+            data["wmomm_band_flux_err"][:, i] = bfluxerr[:, i]
+            data["wmomm_band_flux_flags"][:, i] = bfluxflags[:, i]
     else:
         data["wmomm_band_flux"] = np.arange(10) + 37
         data["wmomm_band_flux_err"] = np.arange(10) + 47
-    data["wmomm_band_flux_flags"] = np.arange(10) + 53
+        data["wmomm_band_flux_flags"] = np.arange(10) + 53
     data['psf_g'] = np.arange(10*2).reshape((10, 2)) + 177
     data['psfrec_g'] = np.arange(10*2).reshape((10, 2)) + 1777
 
@@ -346,13 +500,11 @@ def test_make_output_array(band_names, nbands, band_inds):
         },
         output_file=output_file,
         band_names=band_names,
-        band_inds=band_inds,
         nepoch_per_band=[b + 10 for b in range(nbands)],
         nepoch_eff_per_band=[b + 20 for b in range(nbands)],
     )
 
-    if band_names is not None:
-        assert all(len(df) == 2 for df in arr.dtype.descr)
+    assert all(len(df) == 2 for df in arr.dtype.descr)
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
@@ -371,34 +523,29 @@ def test_make_output_array(band_names, nbands, band_inds):
     assert np.all(arr['mdet_g_cov_2_2'] == data['wmomm_g_cov'][:, 1, 1])
 
     if band_names is None:
-        assert np.all(arr["mdet_flux"] == data["wmomm_band_flux"])
-        assert np.all(arr["mdet_flux_err"] == data["wmomm_band_flux_err"])
-        assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
-        assert np.all(arr["nepoch"] == np.array([b + 10 for b in range(nbands)]))
-        assert np.all(arr["nepoch_eff"] == np.array([b + 20 for b in range(nbands)]))
-    else:
-        for i, b in enumerate(band_names):
-            assert np.all(
-                arr["nepoch_%s" % b]
-                == np.array([b + 10 for b in range(nbands)])[i:i+1]
-            )
-            assert np.all(
-                arr["nepoch_eff_%s" % b]
-                == np.array([b + 20 for b in range(nbands)])[i:i+1]
-            )
+        band_names = ["b%d" % i for i in range(nbands)]
 
-            for tail in ["flux", "flux_err"]:
-                if nbands > 1:
-                    assert np.all(
-                        arr["mdet_%s_%s" % (b, tail)]
-                        == data["wmomm_band_%s" % tail][:, i]
-                    )
-                else:
-                    assert np.all(
-                        arr["mdet_%s_%s" % (b, tail)]
-                        == data["wmomm_band_%s" % tail][:]
-                    )
-        assert np.all(arr["mdet_flux_flags"] == data["wmomm_band_flux_flags"])
+    for i, b in enumerate(band_names):
+        assert np.all(
+            arr["nepoch_%s" % b]
+            == np.array([b + 10 for b in range(nbands)])[i:i+1]
+        )
+        assert np.all(
+            arr["nepoch_eff_%s" % b]
+            == np.array([b + 20 for b in range(nbands)])[i:i+1]
+        )
+
+        for tail in ["flux", "flux_err", "flux_flags"]:
+            if nbands > 1:
+                assert np.all(
+                    arr["mdet_%s_%s" % (b, tail)]
+                    == data["wmomm_band_%s" % tail][:, i]
+                )
+            else:
+                assert np.all(
+                    arr["mdet_%s_%s" % (b, tail)]
+                    == data["wmomm_band_%s" % tail][:]
+                )
 
     # the bounds of the slice are [5,15) for both row and col
     # thus only first two elements of sx_col_noshear pass since they are
@@ -455,7 +602,7 @@ def test_make_output_array(band_names, nbands, band_inds):
     assert "mdet_band_flux_err" not in arr.dtype.names
     assert "mdet_band_flux_flags" not in arr.dtype.names
 
-    print(arr.dtype.names)
+    print("\n" + pprint.pformat(arr.dtype.names))
 
 
 @pytest.mark.parametrize(
@@ -500,6 +647,28 @@ def test_make_output_array_bounds(
     output_file = "/bdsjd/tname_blah.fits.fz"
 
     dtype = [
+        ('flags', 'i4'),
+        ('wmomm_flags', 'i4'),
+        ('wmomm_T_flags', 'i4'),
+        ('wmomm_s2n', 'f8'),
+        ('wmomm_T', 'f8'),
+        ('wmomm_T_err', 'f8'),
+        ('wmomm_T_ratio', 'f8'),
+        ('shear_bands', 'U6'),
+        ('psf_flags', 'i4'),
+        ('psf_T', 'f8'),
+        ('psfrec_flags', 'i4'),
+        ('psfrec_T', 'f8'),
+        ('ormask', 'i4'),
+        ('bmask_noshear', 'i4'),
+        ('mfrac', 'f8'),
+        ('ormask_noshear', 'i4'),
+        ('mfrac_noshear', 'f8'),
+        ("wmomm_g", "f8", (2,)),
+        ("wmomm_g_cov", "f8", (2, 2)),
+        ("psf_g", "f8", (2,)),
+        ("psfrec_g", "f8", (2,)),
+        ("wmomm_band_flux_flags", "i4"),
         ('sx_row', 'f8'),
         ('sx_col', 'f8'),
         ('sx_row_noshear', 'f8'),
@@ -542,7 +711,6 @@ def test_make_output_array_bounds(
         },
         output_file=output_file,
         band_names=None,
-        band_inds=None,
         nepoch_per_band=[10],
         nepoch_eff_per_band=[20],
     )
@@ -587,48 +755,13 @@ def test_make_output_array_bounds(
     assert 'wmomm_blah' not in arr.dtype.names
 
 
-def run_sim(seed, mdet_seed, shear_bands):
-    gaia_stars = None
-    seed = 10
-    i = 10
-    preconfig = None
-
-    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
-    _pres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands, None,
-    )
-    if _pres is None:
-        return None
-
-    mbobs = make_sim(seed=seed, nbands=3, g1=-0.02, g2=0.00, ngrid=7, snr=1e6)
-    _mres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, shear_bands, None,
-    )
-    if _mres is None:
-        return None
-
-    # do some of the tests here due to joblib running
-    # checking one is enough
-    assert _mres[0]['noshear']['wmom_band_flux'][0].shape == (3,)
-
-    return _meas_shear_data(_pres[0]), _meas_shear_data(_mres[0])
-
-
-@pytest.mark.parametrize("shear_bands", [
-    [True, False, False],
-    [True, True, False],
-    [True, False, True],
-    [True, True, True],
-    [False, False, True],
-    [False, True, True],
-])
 @pytest.mark.parametrize("band_names,nbands", [
-    (["f", "j", "p"], 3),
+    (None, 3),
     (["f", "j", "p"], 3),
     (None, 1),
     (["f"], 1),
 ])
-def test_make_output_array_with_sim(band_names, nbands, shear_bands):
+def test_make_output_array_with_sim(band_names, nbands):
     wcs = WCS(dict(
         naxis1=100,
         naxis2=100,
@@ -655,15 +788,11 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
     preconfig = None
     mdet_step = "noshear"
 
-    if nbands == 1:
-        shear_bands = [True]
-
     mbobs = make_sim(seed=seed, nbands=nbands, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, shear_bands, None,
+        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, None,
     )
     data = res[0][mdet_step]
-    band_inds = res[-1]
 
     arr = _make_output_array(
         data=data,
@@ -686,13 +815,11 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
         },
         output_file=output_file,
         band_names=band_names,
-        band_inds=band_inds,
         nepoch_per_band=[b + 10 for b in range(nbands)],
         nepoch_eff_per_band=[b + 20 for b in range(nbands)],
     )
 
-    if band_names is not None:
-        assert all(len(df) == 2 for df in arr.dtype.descr)
+    assert all(len(df) == 2 for df in arr.dtype.descr)
 
     assert np.all(arr['slice_id'] == slice_id)
     assert np.all(arr['mdet_step'] == mdet_step)
@@ -710,37 +837,39 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
     assert_array_equal(arr['mdet_g_cov_1_2'], data['wmom_g_cov'][:, 0, 1])
     assert_array_equal(arr['mdet_g_cov_2_2'], data['wmom_g_cov'][:, 1, 1])
 
-    if band_names is None:
-        assert_array_equal(arr["mdet_flux"], data["wmom_band_flux"])
-        assert_array_equal(arr["mdet_flux_err"], data["wmom_band_flux_err"])
-        assert_array_equal(arr["mdet_flux_flags"], data["wmom_band_flux_flags"])
-        assert np.all(arr["nepoch"] == np.array([b + 10 for b in range(nbands)]))
-        assert np.all(arr["nepoch_eff"] == np.array([b + 20 for b in range(nbands)]))
+    if nbands == 3:
+        for sb in ["012", "12", "0", "1", "2"]:
+            assert np.any(arr["shear_bands"] == sb)
     else:
-        for i, b in enumerate(band_names):
-            assert np.all(
-                arr["nepoch_%s" % b]
-                == np.array([b + 10 for b in range(nbands)])[i:i+1]
-            )
-            assert np.all(
-                arr["nepoch_eff_%s" % b]
-                == np.array([b + 20 for b in range(nbands)])[i:i+1]
-            )
+        assert np.all(arr["shear_bands"] == "0")
 
-            for tail in ["flux", "flux_err"]:
-                if nbands > 1:
-                    assert_array_equal(
-                        arr["mdet_%s_%s" % (b, tail)],
-                        data["wmom_band_%s" % tail][:, i]
-                    )
-                else:
-                    assert_array_equal(
-                        arr["mdet_%s_%s" % (b, tail)],
-                        data["wmom_band_%s" % tail][:]
-                    )
-        assert_array_equal(arr["mdet_flux_flags"], data["wmom_band_flux_flags"])
+    if band_names is None:
+        band_names = ["b%d" % i for i in range(nbands)]
+
+    for i, b in enumerate(band_names):
+        assert np.all(
+            arr["nepoch_%s" % b]
+            == np.array([b + 10 for b in range(nbands)])[i:i+1]
+        )
+        assert np.all(
+            arr["nepoch_eff_%s" % b]
+            == np.array([b + 20 for b in range(nbands)])[i:i+1]
+        )
+
+        for tail in ["flux", "flux_err", "flux_flags"]:
+            if nbands > 1:
+                assert_array_equal(
+                    arr["mdet_%s_%s" % (b, tail)],
+                    data["wmom_band_%s" % tail][:, i]
+                )
+            else:
+                assert_array_equal(
+                    arr["mdet_%s_%s" % (b, tail)],
+                    data["wmom_band_%s" % tail][:]
+                )
 
     assert np.array_equal(arr["mask_flags"], [MASK_SLICEDUPE] * len(arr))
+    assert np.array_equal(arr["mask_flags_noshear"], [MASK_SLICEDUPE] * len(arr))
 
     ura, udec = wcs.image2sky(
         x=(
@@ -778,11 +907,15 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
 
     for col in [
         "flags",
+        "shear_bands",
         "psf_flags",
         "psf_T",
         "ormask",
         "mfrac",
         "bmask",
+        "ormask_noshear",
+        "mfrac_noshear",
+        "bmask_noshear",
         "psfrec_flags",
         "psfrec_T",
     ]:
@@ -794,6 +927,7 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
         "mdet_T",
         "mdet_T_err",
         "mdet_T_ratio",
+        "mdet_T_flags",
     ]:
         data_col = "wmom_" + col[len("mdet_"):]
         assert_array_equal(arr[col], data[data_col])
@@ -819,124 +953,8 @@ def test_make_output_array_with_sim(band_names, nbands, shear_bands):
     assert "mdet_band_flux_err" not in arr.dtype.names
     assert "mdet_band_flux_flags" not in arr.dtype.names
 
-    print(arr.dtype.names)
-
-
-@pytest.mark.parametrize(
-    'shear_bands',
-    [
-        [True, True, True],
-        [True, False, False],
-        [False, True, False],
-    ]
-)
-def test_do_metadetect(shear_bands):
-    ntrial = 10
-    rng = np.random.RandomState(seed=116)
-    seeds = rng.randint(low=1, high=2**29, size=ntrial)
-    mdet_seeds = rng.randint(low=1, high=2**29, size=ntrial)
-
-    tm0 = time.time()
-
-    print("\n")
-
-    jobs = [
-        joblib.delayed(run_sim)(
-            seeds[i], mdet_seeds[i], shear_bands,
-        )
-        for i in range(ntrial)
-    ]
-    outputs = joblib.Parallel(n_jobs=-1, verbose=100, backend='loky')(jobs)
-
-    pres = []
-    mres = []
-    for out in outputs:
-        if out is None:
-            continue
-        pres.append(out[0])
-        mres.append(out[1])
-
-    total_time = time.time()-tm0
-    print("time per:", total_time/ntrial, flush=True)
-
-    pres = np.concatenate(pres)
-    mres = np.concatenate(mres)
-    m, merr, c, cerr = boostrap_m_c(pres, mres)
-
-    print(
-        (
-            "\n\nm [1e-3, 3sigma]: %s +/- %s"
-            "\nc [1e-5, 3sigma]: %s +/- %s"
-        ) % (
-            m/1e-3,
-            3*merr/1e-3,
-            c/1e-5,
-            3*cerr/1e-5,
-        ),
-        flush=True,
-    )
-
-    assert np.abs(m) < max(1e-3, 3*merr)
-    assert np.abs(c) < max(1e-6, 3*cerr)
-
-
-def test_do_metadetect_shear_bands():
-    gaia_stars = None
-    seed = 10
-    i = 10
-    preconfig = None
-    mdet_seed = 12
-
-    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
-    res_all = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
-    )
-
-    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
-    res1 = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, False, False], None,
-    )
-
-    mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
-    res2 = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [False, True, True], None,
-    )
-
-    # look at a subset of keys
-    for col in ['sx_row', 'sx_col', 'wmom_g', 'wmom_band_flux']:
-        for key in ['noshear', '1p', '1m', '2p', '2m']:
-            assert not np.array_equal(
-                res_all[0][key][col],
-                res1[0][key][col],
-            )
-
-            assert not np.array_equal(
-                res_all[0][key][col],
-                res2[0][key][col],
-            )
-
-            assert not np.array_equal(
-                res1[0][key][col],
-                res2[0][key][col],
-            )
-
-
-def test_do_metadetect_pos_mfrac():
-    gaia_stars = None
-    seed = 10
-    i = 10
-    preconfig = None
-    mdet_seed = 12
-
-    mbobs = make_sim(
-        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
-    )
-    res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
-    )
-
-    for key in ['noshear', '1p', '1m', '2p', '2m']:
-        assert np.all(res[0][key]["mfrac"] >= 0)
+    print("  mdet data:\n" + pprint.pformat(data.dtype.names))
+    print("munged data:\n" + pprint.pformat(arr.dtype.names))
 
 
 @pytest.mark.parametrize("wmul", [
@@ -980,34 +998,3 @@ def test_truncate_negative_mfrac_weight(wmul, mmul):
                 assert np.any(obs.mfrac > 0)
             else:
                 assert np.all(obs.mfrac == 0)
-
-
-def test_do_metadetect_flagging():
-    gaia_stars = None
-    seed = 10
-    i = 10
-    preconfig = None
-    mdet_seed = 12
-
-    res = _do_metadetect(
-        CONFIG, None, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
-    )
-    assert (res[3] & MASK_NOSLICE) != 0
-
-    mbobs = make_sim(
-        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
-    )
-    del mbobs[0][0]
-    res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
-    )
-    assert (res[3] & MASK_MISSING_BAND) != 0
-
-    mbobs = make_sim(
-        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
-    )
-    del mbobs[-1][0]
-    res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, [True, True, True], None,
-    )
-    assert (res[3] & MASK_MISSING_BAND) != 0

@@ -10,7 +10,6 @@ import joblib
 import numpy as np
 import esutil as eu
 import fitsio
-import ngmix
 import healpy as hp
 
 from esutil.pbar import PBar
@@ -29,6 +28,7 @@ from .masks import (
     MASK_MDET_FAILED,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
+from metadetect.fitting import MAX_NUM_SHEAR_BANDS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         # columns from mdet
         # we flatten shears and matrices
         ("flags", 'i4'),
+        ("shear_bands", "U%d" % MAX_NUM_SHEAR_BANDS),
 
         ('psf_flags', 'i4'),
         ('psf_g_1', 'f8'),
@@ -146,6 +147,7 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ("mdet_T", "f8"),
         ("mdet_T_err", "f8"),
         ("mdet_T_ratio", "f8"),
+        ("mdet_T_flags", "i4"),
 
         ('ormask', 'i4'),
         ('mfrac', 'f4'),
@@ -165,60 +167,34 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
     ]
 
     new_dt += [
-        ("mdet_flux_flags", 'i4'),
+        ("mdet_%s_flux_flags" % b, "i4")
+        for b in band_names
     ]
-    if band_names is not None:
-        new_dt += [
-            ("mdet_%s_flux" % b, "f8")
-            for b in band_names
-        ]
-        new_dt += [
-            ("mdet_%s_flux_err" % b, "f8")
-            for b in band_names
-        ]
-        new_dt += [
-            ("nepoch_%s" % b, "i4")
-            for b in band_names
-        ]
-        new_dt += [
-            ("nepoch_eff_%s" % b, "i4")
-            for b in band_names
-        ]
-    else:
-        if nbands > 1:
-            new_dt += [
-                ("mdet_flux", "f8", nbands),
-                ("mdet_flux_err", "f8", nbands),
-                ("nepoch", "i4", nbands),
-                ("nepoch_eff", "i4", nbands),
-            ]
-        else:
-            new_dt += [
-                ("mdet_flux", "f8"),
-                ("mdet_flux_err", "f8"),
-                ("nepoch", "i4"),
-                ("nepoch_eff", "i4"),
-            ]
+    new_dt += [
+        ("mdet_%s_flux" % b, "f8")
+        for b in band_names
+    ]
+    new_dt += [
+        ("mdet_%s_flux_err" % b, "f8")
+        for b in band_names
+    ]
+    new_dt += [
+        ("nepoch_%s" % b, "i4")
+        for b in band_names
+    ]
+    new_dt += [
+        ("nepoch_eff_%s" % b, "i4")
+        for b in band_names
+    ]
 
     return new_dt
-
-
-def _redorder_band_fluxes(model, data, bandinds):
-    if len(bandinds) > 1:
-        mpre = model + "_"
-        for col in ["band_flux", "band_flux_err"]:
-            old_fluxes = data[mpre+col].copy()
-            for iold, inew in enumerate(bandinds):
-                data[mpre+col][:, inew] = old_fluxes[:, iold]
-
-    return data
 
 
 def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info, output_file, band_names, band_inds,
+    central_size, coadd_dims, model, info, output_file, band_names,
     nepoch_per_band, nepoch_eff_per_band,
 ):
     """
@@ -258,8 +234,6 @@ def _make_output_array(
     band_names : list of str
         If given, the names of the bands as single strings to use in generating the
         output data.
-    band_inds : list of int
-        The band fluxes are reordered according to these indices.
     nepoch_per_band : list of int
         The number of coadded epochs per band.
     nepoch_eff_per_band : list of int
@@ -278,22 +252,15 @@ def _make_output_array(
     else:
         nbands = data[name].shape[1]
 
-    if band_inds is not None:
-        data = _redorder_band_fluxes(model, data, band_inds)
-        assert len(band_inds) == nbands, (
-            "The # of band inds %s doesn't match the number of bands %d." % (
-                band_inds,
-                nbands,
-            )
-        )
-
     if band_names is not None:
         assert len(band_names) == nbands, (
             "The # of band names %s doesn't match the number of bands %d." % (
-                band_inds,
+                band_names,
                 nbands,
             )
         )
+    else:
+        band_names = ["b%d" % i for i in range(nbands)]
 
     filename = os.path.basename(output_file)
     if filename.endswith(".fz"):
@@ -314,6 +281,7 @@ def _make_output_array(
     # fill simple columns
     for col in [
         "flags",
+        "shear_bands",
         "psf_flags",
         "psf_T",
         "ormask",
@@ -325,8 +293,7 @@ def _make_output_array(
         "psfrec_flags",
         "psfrec_T",
     ]:
-        if col in data.dtype.names:
-            arr[col] = data[col]
+        arr[col] = data[col]
 
     # now fill the model dependent ones
     for col in [
@@ -335,48 +302,35 @@ def _make_output_array(
         "mdet_T",
         "mdet_T_err",
         "mdet_T_ratio",
+        "mdet_T_flags",
     ]:
         data_col = mpre + col[len("mdet_"):]
-        if data_col in data.dtype.names:
-            arr[col] = data[data_col]
+        arr[col] = data[data_col]
 
     # do the shears
-    if "psf_g" in data.dtype.names:
-        arr["psf_g_1"] = data["psf_g"][:, 0]
-        arr["psf_g_2"] = data["psf_g"][:, 1]
-    if "psfrec_g" in data.dtype.names:
-        arr["psfrec_g_1"] = data["psfrec_g"][:, 0]
-        arr["psfrec_g_2"] = data["psfrec_g"][:, 1]
+    arr["psf_g_1"] = data["psf_g"][:, 0]
+    arr["psf_g_2"] = data["psf_g"][:, 1]
+    arr["psfrec_g_1"] = data["psfrec_g"][:, 0]
+    arr["psfrec_g_2"] = data["psfrec_g"][:, 1]
 
-    if mpre + "g" in data.dtype.names:
-        arr["mdet_g_1"] = data[mpre + "g"][:, 0]
-        arr["mdet_g_2"] = data[mpre + "g"][:, 1]
+    arr["mdet_g_1"] = data[mpre + "g"][:, 0]
+    arr["mdet_g_2"] = data[mpre + "g"][:, 1]
 
-    if mpre + "g_cov" in data.dtype.names:
-        arr["mdet_g_cov_1_1"] = data[mpre + "g_cov"][:, 0, 0]
-        arr["mdet_g_cov_1_2"] = data[mpre + "g_cov"][:, 0, 1]
-        arr["mdet_g_cov_2_2"] = data[mpre + "g_cov"][:, 1, 1]
+    arr["mdet_g_cov_1_1"] = data[mpre + "g_cov"][:, 0, 0]
+    arr["mdet_g_cov_1_2"] = data[mpre + "g_cov"][:, 0, 1]
+    arr["mdet_g_cov_2_2"] = data[mpre + "g_cov"][:, 1, 1]
 
     # fluxes
-    if mpre + "band_flux_flags" in data.dtype.names:
-        arr["mdet_flux_flags"] = data[mpre + "band_flux_flags"]
-
-    if (
-        mpre + "band_flux" in data.dtype.names
-        and mpre + "band_flux_err" in data.dtype.names
-    ):
-        if band_names is not None:
-            if nbands == 1:
-                arr["mdet_%s_flux" % band_names[0]] = data[mpre + "band_flux"][:]
-                arr["mdet_%s_flux_err" % band_names[0]] \
-                    = data[mpre + "band_flux_err"][:]
-            else:
-                for i, b in enumerate(band_names):
-                    arr["mdet_%s_flux" % b] = data[mpre + "band_flux"][:, i]
-                    arr["mdet_%s_flux_err" % b] = data[mpre + "band_flux_err"][:, i]
-        else:
-            arr["mdet_flux"] = data[mpre + "band_flux"]
-            arr["mdet_flux_err"] = data[mpre + "band_flux_err"]
+    if nbands == 1:
+        arr["mdet_%s_flux_flags" % band_names[0]] = data[mpre + "band_flux_flags"][:]
+        arr["mdet_%s_flux" % band_names[0]] = data[mpre + "band_flux"][:]
+        arr["mdet_%s_flux_err" % band_names[0]] \
+            = data[mpre + "band_flux_err"][:]
+    else:
+        for i, b in enumerate(band_names):
+            arr["mdet_%s_flux_flags" % b] = data[mpre + "band_flux_flags"][:, i]
+            arr["mdet_%s_flux" % b] = data[mpre + "band_flux"][:, i]
+            arr["mdet_%s_flux_err" % b] = data[mpre + "band_flux_err"][:, i]
 
     assert len(nepoch_per_band) == nbands, (
         "The length of the band nepochs list %s doesn't match the "
@@ -392,14 +346,10 @@ def _make_output_array(
             nbands,
         )
     )
-    if band_names is not None:
-        for b, ne in zip(band_names, nepoch_per_band):
-            arr["nepoch_%s" % b] = ne
-        for b, ne in zip(band_names, nepoch_eff_per_band):
-            arr["nepoch_eff_%s" % b] = ne
-    else:
-        arr["nepoch"][:] = np.array(nepoch_per_band, dtype="i4")
-        arr["nepoch_eff"][:] = np.array(nepoch_eff_per_band, dtype="i4")
+    for b, ne in zip(band_names, nepoch_per_band):
+        arr["nepoch_%s" % b] = ne
+    for b, ne in zip(band_names, nepoch_eff_per_band):
+        arr["nepoch_eff_%s" % b] = ne
 
     arr['slice_id'] = slice_id
     arr['mdet_step'] = mdet_step
@@ -525,7 +475,7 @@ def _post_process_results(
     dt = 0
     missing_slice_inds = []
     missing_slice_flags = []
-    for res, i, _dt, flags, band_inds in outputs:
+    for res, i, _dt, flags in outputs:
         dt += _dt
         if res is None or res["noshear"] is None or res["noshear"].size == 0:
             if res is None:
@@ -566,7 +516,6 @@ def _post_process_results(
                     info=info,
                     output_file=output_file,
                     band_names=band_names,
-                    band_inds=band_inds,
                     nepoch_per_band=[od["nepoch"][i] for od in obj_data_list],
                     nepoch_eff_per_band=[od["nepoch_eff"][i] for od in obj_data_list],
                 ))
@@ -721,12 +670,20 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
         return mbobs
 
 
-def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, viz_dir):
+def _get_shearband_combs(nbands):
+    shear_band_combs = [list(range(nbands))]
+    if nbands > 2:
+        shear_band_combs += [list(range(nbands))[1:]]
+    if nbands > 1:
+        for i in range(nbands):
+            shear_band_combs += [[i]]
+    return shear_band_combs
+
+
+def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, viz_dir):
     _t0 = time.time()
     res = None
     flags = 0
-    bandinds = []
-    nonshear_bandinds = []
     if mbobs is not None:
         if viz_dir is not None:
             _write_mbobs_image(viz_dir, mbobs, i, "_raw")
@@ -744,27 +701,12 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
             if minnum > 0:
                 LOGGER.debug("running mdet for entry %d", i)
 
-                shear_mbobs = ngmix.MultiBandObsList()
-                nonshear_mbobs = ngmix.MultiBandObsList()
-                for iband, (obslist, is_shear_band) in enumerate(
-                    zip(mbobs, shear_bands)
-                ):
-                    if is_shear_band:
-                        shear_mbobs.append(obslist)
-                        bandinds.append(iband)
-                    else:
-                        nonshear_mbobs.append(obslist)
-                        nonshear_bandinds.append(iband)
-
-                if len(nonshear_mbobs) == 0:
-                    nonshear_mbobs = None
-
                 try:
                     res = do_metadetect(
                         config,
-                        shear_mbobs,
+                        mbobs,
                         rng,
-                        nonshear_mbobs=nonshear_mbobs,
+                        shear_band_combs=_get_shearband_combs(len(mbobs)),
                     )
                 except Exception as e:
                     LOGGER.debug("metadetect failed for slice %d: %s", i, repr(e))
@@ -788,7 +730,7 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, shear_bands, v
         LOGGER.debug("mbobs is None for entry %d", i)
         flags |= MASK_NOSLICE
 
-    return res, i, time.time() - _t0, flags, bandinds + nonshear_bandinds
+    return res, i, time.time() - _t0, flags
 
 
 def get_part_ranges(part, n_parts, size):
@@ -866,7 +808,6 @@ def run_metadetect(
     start=0,
     num=None,
     n_jobs=1,
-    shear_bands=None,
     verbose=100,
     viz_dir=None,
     band_names=None,
@@ -896,10 +837,6 @@ def run_metadetect(
         The default of `None` will process all entries in the file.
     n_jobs : int, optional
         The number of jobs to use.
-    shear_bands : list of bool or None, optional
-        If not None, this is a list of boolean values indicating if a given
-        band is to be used for shear. The length must match the number of MEDS
-        files used to make the `multiband_meds`.
     verbose : int, optional
         joblib logging level.
     viz_dir : str, optional
@@ -917,15 +854,6 @@ def run_metadetect(
     if num + start > multiband_meds.size:
         num = multiband_meds.size - start
 
-    if shear_bands is None:
-        shear_bands = [True] * len(multiband_meds.mlist)
-
-    if not any(shear_bands):
-        raise RuntimeError(
-            "You must have at least one band marked to be "
-            "used for shear in `shear_bands`!"
-        )
-
     print('# of slices: %d' % num, flush=True)
     print('slice range: [%d, %d)' % (start, start+num), flush=True)
     meds_iter = _make_meds_iterator(multiband_meds, start, num)
@@ -936,7 +864,7 @@ def run_metadetect(
         outputs = [
             _do_metadetect(
                 config, mbobs, gaia_stars, seed+i*256, i,
-                preconfig, shear_bands, viz_dir
+                preconfig, viz_dir
             )
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
@@ -948,7 +876,7 @@ def run_metadetect(
         )(
             joblib.delayed(_do_metadetect)(
                 config, mbobs, gaia_stars, seed+i*256, i,
-                preconfig, shear_bands, viz_dir,
+                preconfig, viz_dir,
             )
             for i, mbobs in meds_iter()
         )
