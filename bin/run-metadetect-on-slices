@@ -245,7 +245,7 @@ def main(
 
     if use_tmpdir or tmpdir is not None:
         with tempfile.TemporaryDirectory(dir=tmpdir) as _tmpdir:
-            _call(_tmpdir.name)
+            _call(_tmpdir)
     else:
         _call(tmpdir)
 
