@@ -5,7 +5,6 @@ run metadetect on a slice file
 import sys
 import logging
 import tempfile
-import os
 
 import click
 import yaml
@@ -214,14 +213,9 @@ def main(
             band_names=band_names,
         )
 
-    if use_tmpdir and tmpdir is None:
-        tmpdir = tempfile.TemporaryDirectory().name
-
-    if tmpdir is not None:
-        try:
-            _call(tmpdir)
-        finally:
-            os.system("rm -rf %s" % os.path.join(tmpdir, "*"))
+    if use_tmpdir or tmpdir is not None:
+        with tempfile.TemporaryDirectory(dir=tmpdir) as _tmpdir:
+            _call(_tmpdir.name)
     else:
         _call(tmpdir)
 
