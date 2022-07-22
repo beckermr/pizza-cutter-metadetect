@@ -838,7 +838,7 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert_array_equal(arr['mdet_g_cov_2_2'], data['wmom_g_cov'][:, 1, 1])
 
     if nbands == 3:
-        for sb in ["012", "12", "0", "1", "2"]:
+        for sb in ["012", "12"]:
             assert np.any(arr["shear_bands"] == sb)
     else:
         assert np.all(arr["shear_bands"] == "0")
