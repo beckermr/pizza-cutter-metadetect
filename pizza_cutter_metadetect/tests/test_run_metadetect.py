@@ -373,9 +373,9 @@ def test_do_metadetect_flagging():
 
 def test_get_shearband_combs():
     assert _get_shearband_combs(1) == [[0]]
-    assert _get_shearband_combs(2) == [[0, 1], [0], [1]]
-    assert _get_shearband_combs(3) == [[0, 1, 2], [1, 2], [0], [1], [2]]
-    assert _get_shearband_combs(4) == [[0, 1, 2, 3], [1, 2, 3], [0], [1], [2], [3]]
+    assert _get_shearband_combs(2) == [[0, 1]]
+    assert _get_shearband_combs(3) == [[0, 1, 2], [1, 2]]
+    assert _get_shearband_combs(4) == [[0, 1, 2, 3], [1, 2, 3]]
 
 
 @pytest.mark.parametrize("band_names,nbands", [
