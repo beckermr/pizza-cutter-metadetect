@@ -674,9 +674,6 @@ def _get_shearband_combs(nbands):
     shear_band_combs = [list(range(nbands))]
     if nbands > 2:
         shear_band_combs += [list(range(nbands))[1:]]
-    if nbands > 1:
-        for i in range(nbands):
-            shear_band_combs += [[i]]
     return shear_band_combs
 
 
