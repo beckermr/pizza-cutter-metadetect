@@ -131,7 +131,7 @@ def _process(
     # if tmpdir is none, no staging or local dir is used
     with StagedOutFile(filename, tmpdir=tmpdir) as sf:
         with StagedOutFile(mask_hs_filename, tmpdir=tmpdir) as mask_hs_sf:
-            with StagedOutFile(mask_hs_filename, tmpdir=tmpdir) as mask_img_sf:
+            with StagedOutFile(mask_img_filename, tmpdir=tmpdir) as mask_img_sf:
                 _call(sf.path,  mask_hs_sf.path,  mask_img_sf.path)
 
     print('output is in:', filename, flush=True)
