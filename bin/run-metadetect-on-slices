@@ -82,11 +82,12 @@ def _process(
             )
         )
 
-    def _call(output_file, mask_output_file):
+    def _call(output_file, mask_hs_output_file, mask_img_output_file):
         run_metadetect(
             config=_config,
             output_file=output_file,
-            mask_output_file=mask_output_file,
+            mask_hs_output_file=mask_hs_output_file,
+            mask_img_output_file=mask_img_output_file,
             multiband_meds=mbmeds,
             seed=seed,
             preconfig=_preconfig,
@@ -102,11 +103,11 @@ def _process(
             ),
         )
 
-    if output_path.endswith(".fits.fz"):
+    if output_path.endswith(".fits"):
         filename = output_path
-    elif output_path.endswith(".fits"):
+    elif output_path.endswith(".fits.fz"):
         raise RuntimeError(
-            "You must pass a path that ends with '.fits.fz' in order to specify the "
+            "You must pass a path that ends with '.fits' in order to specify the "
             "exact output location."
         )
     else:
@@ -117,20 +118,25 @@ def _process(
             part,
             meds_range,
         )
-    mask_filename = filename[:-len(".fits.fz")] + "-healsparse-mask.hs"
+    mask_hs_filename = filename[:-len(".fits")] + "-healsparse-mask.hs"
+    mask_img_filename = filename[:-len(".fits")] + "-mask.fits.fz"
 
     makedir_fromfile(filename)
-    makedir_fromfile(mask_filename)
+    makedir_fromfile(mask_hs_filename)
+    makedir_fromfile(mask_img_filename)
     print('output file:', filename, flush=True)
-    print('mask output file:', mask_filename, flush=True)
+    print('mask healsparse output file:', mask_hs_filename, flush=True)
+    print('mask image output file:', mask_img_filename, flush=True)
 
     # if tmpdir is none, no staging or local dir is used
     with StagedOutFile(filename, tmpdir=tmpdir) as sf:
-        with StagedOutFile(mask_filename, tmpdir=tmpdir) as msf:
-            _call(sf.path, msf.path)
+        with StagedOutFile(mask_hs_filename, tmpdir=tmpdir) as mask_hs_sf:
+            with StagedOutFile(mask_hs_filename, tmpdir=tmpdir) as mask_img_sf:
+                _call(sf.path,  mask_hs_sf.path,  mask_img_sf.path)
 
     print('output is in:', filename, flush=True)
-    print('mask output is in:', mask_filename, flush=True)
+    print('mask healsparse output is in:', mask_hs_filename, flush=True)
+    print('mask image output is in:', mask_img_filename, flush=True)
 
 
 @click.command()

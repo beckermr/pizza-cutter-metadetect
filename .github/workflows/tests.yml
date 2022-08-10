@@ -44,6 +44,4 @@ jobs:
       - name: test
         shell: bash -l {0}
         run: |
-          git clone https://github.com/beckermr/des-y3-test-data.git
-          export TEST_DESDATA=`pwd`/des-y3-test-data
           pytest -vvs pizza_cutter_metadetect
