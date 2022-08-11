@@ -28,7 +28,6 @@ from .masks import (
     MASK_MDET_FAILED,
 )
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
-from metadetect.fitting import MAX_NUM_SHEAR_BANDS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,12 +88,12 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
         part = 0
 
     if part is not None:
-        tail = 'part%04d.fits.fz' % part
+        tail = 'part%04d.fits' % part
     else:
         start, end_plus_one, num = split_range(meds_range)
         end = end_plus_one - 1
 
-        tail = 'range%04d-%04d.fits.fz' % (start, end)
+        tail = 'range%04d-%04d.fits' % (start, end)
 
     parts.append(tail)
 
@@ -105,7 +104,9 @@ def make_output_filename(directory, config_fname, meds_fname, part, meds_range):
     return fname
 
 
-def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
+def _make_output_dtype(
+    *, nbands, filename_len, tilename_len, band_names, mdet_dtype_descr
+):
     new_dt = [
         ('slice_id', 'i8'),
         ('mdet_step', 'U7'),
@@ -125,58 +126,8 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         ('hpix_16384_noshear', 'i8'),
         ('filename', 'U%d' % filename_len),
         ('tilename', 'U%d' % tilename_len),
-
-        # columns from mdet
-        # we flatten shears and matrices
-        ("flags", 'i4'),
-        ("shear_bands", "U%d" % MAX_NUM_SHEAR_BANDS),
-
-        ('psf_flags', 'i4'),
-        ('psf_g_1', 'f8'),
-        ('psf_g_2', 'f8'),
-        ('psf_T', 'f8'),
-
-        ("mdet_flags", 'i4'),
-        ("mdet_s2n", "f8"),
-        ("mdet_g_1", "f8"),
-        ("mdet_g_2", "f8"),
-        ("mdet_g_cov_1_1", "f8"),
-        ("mdet_g_cov_1_2", "f8"),
-        ("mdet_g_cov_2_2", "f8"),
-
-        ("mdet_T", "f8"),
-        ("mdet_T_err", "f8"),
-        ("mdet_T_ratio", "f8"),
-        ("mdet_T_flags", "i4"),
-
-        ('ormask', 'i4'),
-        ('mfrac', 'f4'),
-        ('bmask', 'i4'),
         ('mask_flags', 'i4'),
-
-        ('ormask_noshear', 'i4'),
-        ('mfrac_noshear', 'f4'),
-        ('bmask_noshear', 'i4'),
         ('mask_flags_noshear', 'i4'),
-
-        # this is the original PSF
-        ('psfrec_flags', 'i4'),
-        ('psfrec_g_1', 'f8'),
-        ('psfrec_g_2', 'f8'),
-        ('psfrec_T', 'f8'),
-    ]
-
-    new_dt += [
-        ("mdet_%s_flux_flags" % b, "i4")
-        for b in band_names
-    ]
-    new_dt += [
-        ("mdet_%s_flux" % b, "f8")
-        for b in band_names
-    ]
-    new_dt += [
-        ("mdet_%s_flux_err" % b, "f8")
-        for b in band_names
     ]
     new_dt += [
         ("nepoch_%s" % b, "i4")
@@ -187,6 +138,25 @@ def _make_output_dtype(*, nbands, filename_len, tilename_len, band_names):
         for b in band_names
     ]
 
+    for desc in mdet_dtype_descr:
+        if "sx_row" not in desc[0] and "sx_col" not in desc[0]:
+            if desc[0].endswith("_g"):
+                new_dt.append((desc[0] + "_1", desc[1]))
+                new_dt.append((desc[0] + "_2", desc[1]))
+            elif desc[0].endswith("_g_cov"):
+                new_dt.append((desc[0] + "_1_1", desc[1]))
+                new_dt.append((desc[0] + "_1_2", desc[1]))
+                new_dt.append((desc[0] + "_2_2", desc[1]))
+            elif (
+                desc[0].endswith("band_flux_flags")
+                or desc[0].endswith("band_flux")
+                or desc[0].endswith("band_flux_err")
+            ):
+                for band in band_names:
+                    new_dt.append((desc[0] + "_" + band, desc[1]))
+            else:
+                new_dt.append(desc)
+
     return new_dt
 
 
@@ -194,7 +164,7 @@ def _make_output_array(
     *,
     data, slice_id, mdet_step,
     orig_start_row, orig_start_col, position_offset, wcs, buffer_size,
-    central_size, coadd_dims, model, info, output_file, band_names,
+    central_size, coadd_dims, info, output_file, band_names,
     nepoch_per_band, nepoch_eff_per_band,
 ):
     """
@@ -224,9 +194,6 @@ def _make_output_array(
         The size of the central region.
     coadd_dims: tuple of ints
         The dimension of the full image that the slices tile.
-    model: str
-        The model used for metadetect. This is used to rename columns starting
-        with '{model}_' to 'mdet_'.
     info : dict
         Dict of tile geom information for getting detections in the tile boundaries.
     output_file : str
@@ -243,14 +210,13 @@ def _make_output_array(
     -------
     array with new fields
     """
-    mpre = model + '_'
-
     # get # of bands
-    name = mpre + "band_flux"
-    if len(data[name].shape) == 1:
-        nbands = 1
-    else:
-        nbands = data[name].shape[1]
+    for col in data.dtype.names:
+        if col.endswith("band_flux"):
+            if len(data[col].shape) == 1:
+                nbands = 1
+            else:
+                nbands = data[col].shape[1]
 
     if band_names is not None:
         assert len(band_names) == nbands, (
@@ -271,6 +237,7 @@ def _make_output_array(
         filename_len=len(filename),
         tilename_len=len(tilename),
         band_names=band_names,
+        mdet_dtype_descr=data.dtype.descr,
     )
 
     arr = np.zeros(data.shape, dtype=new_dt)
@@ -278,59 +245,29 @@ def _make_output_array(
         if arr[name].dtype.kind == "f":
             arr[name] = np.nan
 
-    # fill simple columns
-    for col in [
-        "flags",
-        "shear_bands",
-        "psf_flags",
-        "psf_T",
-        "ormask",
-        "mfrac",
-        "bmask",
-        "ormask_noshear",
-        "mfrac_noshear",
-        "bmask_noshear",
-        "psfrec_flags",
-        "psfrec_T",
-    ]:
-        arr[col] = data[col]
+    for col in data.dtype.names:
+        if "sx_row" in col or "sx_col" in col:
+            continue
 
-    # now fill the model dependent ones
-    for col in [
-        "mdet_flags",
-        "mdet_s2n",
-        "mdet_T",
-        "mdet_T_err",
-        "mdet_T_ratio",
-        "mdet_T_flags",
-    ]:
-        data_col = mpre + col[len("mdet_"):]
-        arr[col] = data[data_col]
-
-    # do the shears
-    arr["psf_g_1"] = data["psf_g"][:, 0]
-    arr["psf_g_2"] = data["psf_g"][:, 1]
-    arr["psfrec_g_1"] = data["psfrec_g"][:, 0]
-    arr["psfrec_g_2"] = data["psfrec_g"][:, 1]
-
-    arr["mdet_g_1"] = data[mpre + "g"][:, 0]
-    arr["mdet_g_2"] = data[mpre + "g"][:, 1]
-
-    arr["mdet_g_cov_1_1"] = data[mpre + "g_cov"][:, 0, 0]
-    arr["mdet_g_cov_1_2"] = data[mpre + "g_cov"][:, 0, 1]
-    arr["mdet_g_cov_2_2"] = data[mpre + "g_cov"][:, 1, 1]
-
-    # fluxes
-    if nbands == 1:
-        arr["mdet_%s_flux_flags" % band_names[0]] = data[mpre + "band_flux_flags"][:]
-        arr["mdet_%s_flux" % band_names[0]] = data[mpre + "band_flux"][:]
-        arr["mdet_%s_flux_err" % band_names[0]] \
-            = data[mpre + "band_flux_err"][:]
-    else:
-        for i, b in enumerate(band_names):
-            arr["mdet_%s_flux_flags" % b] = data[mpre + "band_flux_flags"][:, i]
-            arr["mdet_%s_flux" % b] = data[mpre + "band_flux"][:, i]
-            arr["mdet_%s_flux_err" % b] = data[mpre + "band_flux_err"][:, i]
+        if col.endswith("_g"):
+            arr[col + "_1"] = data[col][:, 0]
+            arr[col + "_2"] = data[col][:, 1]
+        elif col.endswith("_g_cov"):
+            arr[col + "_1_1"] = data[col][:, 0, 0]
+            arr[col + "_1_2"] = data[col][:, 0, 1]
+            arr[col + "_2_2"] = data[col][:, 1, 1]
+        elif (
+            col.endswith("band_flux_flags")
+            or col.endswith("band_flux")
+            or col.endswith("band_flux_err")
+        ):
+            if nbands == 1:
+                arr[col + "_" + band_names[0]] = data[col][:]
+            else:
+                for i, band in enumerate(band_names):
+                    arr[col + "_" + band] = data[col][:, i]
+        else:
+            arr[col] = data[col]
 
     assert len(nepoch_per_band) == nbands, (
         "The length of the band nepochs list %s doesn't match the "
@@ -512,7 +449,6 @@ def _post_process_results(
                     buffer_size=buffer_size,
                     central_size=central_size,
                     coadd_dims=coadd_dims,
-                    model=config['model'],
                     info=info,
                     output_file=output_file,
                     band_names=band_names,
@@ -799,7 +735,8 @@ def run_metadetect(
     config,
     multiband_meds,
     output_file,
-    mask_output_file,
+    mask_img_output_file,
+    mask_hs_output_file,
     seed,
     preconfig,
     start=0,
@@ -820,7 +757,9 @@ def run_metadetect(
         A multiband MEDS data structure.
     output_file : str
         The file to which to write the outputs.
-    mask_output_file : str
+    mask_img_output_file : str
+        The file to write the mask image to.
+    mask_hs_output_file : str
         The file to write the healsparse mask to.
     seed: int
         Base seed for generating seeds
@@ -947,8 +886,12 @@ def run_metadetect(
     )
 
     if output is not None:
-        with fitsio.FITS(output_file[:-len(".fz")], "rw", clobber=True) as fits:
+        with fitsio.FITS(output_file, "rw", clobber=True) as fits:
             fits.write(output, extname="cat")
+
+        with fitsio.FITS(
+            mask_img_output_file[:-len(".fz")], "rw", clobber=True,
+        ) as fits:
             fits.create_image_hdu(
                 img=None,
                 dtype="i4",
@@ -960,10 +903,10 @@ def run_metadetect(
 
         # fpack it
         try:
-            os.remove(output_file)
+            os.remove(mask_img_output_file)
         except FileNotFoundError:
             pass
-        cmd = 'fpack %s' % output_file[:-len(".fz")]
+        cmd = 'fpack %s' % mask_img_output_file[:-len(".fz")]
         print("fpack cmd:", cmd, flush=True)
         try:
             subprocess.check_call(cmd, shell=True)
@@ -971,10 +914,10 @@ def run_metadetect(
             pass
         else:
             try:
-                os.remove(output_file[:-len(".fz")])
+                os.remove(mask_img_output_file[:-len(".fz")])
             except Exception:
                 pass
 
-        hs_msk.write(mask_output_file, clobber=True)
+        hs_msk.write(mask_hs_output_file, clobber=True)
     else:
         print("WARNING: no output produced by metadetect!", flush=True)

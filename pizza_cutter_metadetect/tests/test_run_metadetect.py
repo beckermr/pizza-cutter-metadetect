@@ -183,7 +183,7 @@ def make_sim(
 
 def _shear_cuts(arr, sb):
     msk = (
-        (arr['flags'] == 0)
+        (arr['wmom_flags'] == 0)
         & (arr['wmom_s2n'] > 10)
         & (arr['wmom_T_ratio'] > 1.2)
         & (arr['shear_bands'] == sb)
@@ -490,7 +490,6 @@ def test_make_output_array(band_names, nbands):
         buffer_size=5,
         central_size=10,
         coadd_dims=(10000, 10000),
-        model='wmomm',
         info={
             'crossra0': 'Y',
             'udecmin': -90,
@@ -516,11 +515,11 @@ def test_make_output_array(band_names, nbands):
     assert np.all(arr['psfrec_g_1'] == data['psfrec_g'][:, 0])
     assert np.all(arr['psfrec_g_2'] == data['psfrec_g'][:, 1])
 
-    assert np.all(arr['mdet_g_1'] == data['wmomm_g'][:, 0])
-    assert np.all(arr['mdet_g_2'] == data['wmomm_g'][:, 1])
-    assert np.all(arr['mdet_g_cov_1_1'] == data['wmomm_g_cov'][:, 0, 0])
-    assert np.all(arr['mdet_g_cov_1_2'] == data['wmomm_g_cov'][:, 0, 1])
-    assert np.all(arr['mdet_g_cov_2_2'] == data['wmomm_g_cov'][:, 1, 1])
+    assert np.all(arr['wmomm_g_1'] == data['wmomm_g'][:, 0])
+    assert np.all(arr['wmomm_g_2'] == data['wmomm_g'][:, 1])
+    assert np.all(arr['wmomm_g_cov_1_1'] == data['wmomm_g_cov'][:, 0, 0])
+    assert np.all(arr['wmomm_g_cov_1_2'] == data['wmomm_g_cov'][:, 0, 1])
+    assert np.all(arr['wmomm_g_cov_2_2'] == data['wmomm_g_cov'][:, 1, 1])
 
     if band_names is None:
         band_names = ["b%d" % i for i in range(nbands)]
@@ -538,12 +537,12 @@ def test_make_output_array(band_names, nbands):
         for tail in ["flux", "flux_err", "flux_flags"]:
             if nbands > 1:
                 assert np.all(
-                    arr["mdet_%s_%s" % (b, tail)]
+                    arr["wmomm_band_%s_%s" % (tail, b)]
                     == data["wmomm_band_%s" % tail][:, i]
                 )
             else:
                 assert np.all(
-                    arr["mdet_%s_%s" % (b, tail)]
+                    arr["wmomm_band_%s_%s" % (tail, b)]
                     == data["wmomm_band_%s" % tail][:]
                 )
 
@@ -581,26 +580,17 @@ def test_make_output_array(band_names, nbands):
     assert np.all(arr['slice_y_noshear'] == data['sx_row_noshear'])
     assert np.all(arr['slice_x_noshear'] == data['sx_col_noshear'])
 
-    assert 'a' not in arr.dtype.names
-    assert 'wmom_blah' not in arr.dtype.names
-    assert 'mdet_blah' not in arr.dtype.names
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
     assert 'sx_row' not in arr.dtype.names
     assert 'sx_col' not in arr.dtype.names
-    assert 'wmomm_blah' not in arr.dtype.names
     assert "wmomm_g" not in arr.dtype.names
     assert "wmomm_g_cov" not in arr.dtype.names
-    assert "psf_g" not in arr.dtype.names
+    assert "wmom_psf_g" not in arr.dtype.names
     assert "psfrec_g" not in arr.dtype.names
-    assert "mdet_g" not in arr.dtype.names
-    assert "mdet_g_cov" not in arr.dtype.names
     assert "wmomm_band_flux" not in arr.dtype.names
     assert "wmomm_band_flux_err" not in arr.dtype.names
     assert "wmomm_band_flux_flags" not in arr.dtype.names
-    assert "mdet_band_flux" not in arr.dtype.names
-    assert "mdet_band_flux_err" not in arr.dtype.names
-    assert "mdet_band_flux_flags" not in arr.dtype.names
 
     print("\n" + pprint.pformat(arr.dtype.names))
 
@@ -701,7 +691,6 @@ def test_make_output_array_bounds(
         buffer_size=buffer_size,
         central_size=central_size,
         coadd_dims=coadd_dims,
-        model='wmomm',
         info={
             'crossra0': 'Y',
             'udecmin': -90,
@@ -752,7 +741,6 @@ def test_make_output_array_bounds(
     assert 'sx_col_noshear' not in arr.dtype.names
     assert 'sx_row' not in arr.dtype.names
     assert 'sx_col' not in arr.dtype.names
-    assert 'wmomm_blah' not in arr.dtype.names
 
 
 @pytest.mark.parametrize("band_names,nbands", [
@@ -805,7 +793,6 @@ def test_make_output_array_with_sim(band_names, nbands):
         buffer_size=5,
         central_size=10,
         coadd_dims=(10000, 10000),
-        model='wmom',
         info={
             'crossra0': 'Y',
             'udecmin': -90,
@@ -826,16 +813,16 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert np.all(arr['tilename'] == "tname")
     assert np.all(arr['filename'] == "tname_blah.fits")
 
-    assert_array_equal(arr['psf_g_1'], data['psf_g'][:, 0])
-    assert_array_equal(arr['psf_g_2'], data['psf_g'][:, 1])
+    assert_array_equal(arr['wmom_psf_g_1'], data['wmom_psf_g'][:, 0])
+    assert_array_equal(arr['wmom_psf_g_2'], data['wmom_psf_g'][:, 1])
     assert_array_equal(arr['psfrec_g_1'], data['psfrec_g'][:, 0])
     assert_array_equal(arr['psfrec_g_2'], data['psfrec_g'][:, 1])
 
-    assert_array_equal(arr['mdet_g_1'], data['wmom_g'][:, 0])
-    assert_array_equal(arr['mdet_g_2'], data['wmom_g'][:, 1])
-    assert_array_equal(arr['mdet_g_cov_1_1'], data['wmom_g_cov'][:, 0, 0])
-    assert_array_equal(arr['mdet_g_cov_1_2'], data['wmom_g_cov'][:, 0, 1])
-    assert_array_equal(arr['mdet_g_cov_2_2'], data['wmom_g_cov'][:, 1, 1])
+    assert_array_equal(arr['wmom_g_1'], data['wmom_g'][:, 0])
+    assert_array_equal(arr['wmom_g_2'], data['wmom_g'][:, 1])
+    assert_array_equal(arr['wmom_g_cov_1_1'], data['wmom_g_cov'][:, 0, 0])
+    assert_array_equal(arr['wmom_g_cov_1_2'], data['wmom_g_cov'][:, 0, 1])
+    assert_array_equal(arr['wmom_g_cov_2_2'], data['wmom_g_cov'][:, 1, 1])
 
     if nbands == 3:
         for sb in ["012", "12"]:
@@ -859,12 +846,12 @@ def test_make_output_array_with_sim(band_names, nbands):
         for tail in ["flux", "flux_err", "flux_flags"]:
             if nbands > 1:
                 assert_array_equal(
-                    arr["mdet_%s_%s" % (b, tail)],
+                    arr["wmom_band_%s_%s" % (tail, b)],
                     data["wmom_band_%s" % tail][:, i]
                 )
             else:
                 assert_array_equal(
-                    arr["mdet_%s_%s" % (b, tail)],
+                    arr["wmom_band_%s_%s" % (tail, b)],
                     data["wmom_band_%s" % tail][:]
                 )
 
@@ -906,10 +893,10 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert np.all(arr['slice_x_noshear'] == data['sx_col_noshear'])
 
     for col in [
-        "flags",
+        "wmom_flags",
         "shear_bands",
-        "psf_flags",
-        "psf_T",
+        "wmom_psf_flags",
+        "wmom_psf_T",
         "ormask",
         "mfrac",
         "bmask",
@@ -918,40 +905,26 @@ def test_make_output_array_with_sim(band_names, nbands):
         "bmask_noshear",
         "psfrec_flags",
         "psfrec_T",
+        "wmom_gal_flags",
+        "wmom_s2n",
+        "wmom_T",
+        "wmom_T_err",
+        "wmom_T_ratio",
+        "wmom_T_flags",
     ]:
         assert_array_equal(arr[col], data[col])
 
-    for col in [
-        "mdet_flags",
-        "mdet_s2n",
-        "mdet_T",
-        "mdet_T_err",
-        "mdet_T_ratio",
-        "mdet_T_flags",
-    ]:
-        data_col = "wmom_" + col[len("mdet_"):]
-        assert_array_equal(arr[col], data[data_col])
-
-    assert 'a' not in arr.dtype.names
-    assert 'wmom_blah' not in arr.dtype.names
-    assert 'mdet_blah' not in arr.dtype.names
     assert 'sx_row_noshear' not in arr.dtype.names
     assert 'sx_col_noshear' not in arr.dtype.names
     assert 'sx_row' not in arr.dtype.names
     assert 'sx_col' not in arr.dtype.names
-    assert 'wmom_blah' not in arr.dtype.names
     assert "wmom_g" not in arr.dtype.names
     assert "wmom_g_cov" not in arr.dtype.names
-    assert "psf_g" not in arr.dtype.names
+    assert "wmom_psf_g" not in arr.dtype.names
     assert "psfrec_g" not in arr.dtype.names
-    assert "mdet_g" not in arr.dtype.names
-    assert "mdet_g_cov" not in arr.dtype.names
     assert "wmom_band_flux" not in arr.dtype.names
     assert "wmom_band_flux_err" not in arr.dtype.names
     assert "wmom_band_flux_flags" not in arr.dtype.names
-    assert "mdet_band_flux" not in arr.dtype.names
-    assert "mdet_band_flux_err" not in arr.dtype.names
-    assert "mdet_band_flux_flags" not in arr.dtype.names
 
     print("  mdet data:\n" + pprint.pformat(data.dtype.names))
     print("munged data:\n" + pprint.pformat(arr.dtype.names))
