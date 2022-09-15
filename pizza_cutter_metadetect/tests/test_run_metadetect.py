@@ -371,6 +371,35 @@ def test_do_metadetect_flagging():
     assert (res[3] & MASK_MISSING_BAND) != 0
 
 
+def test_do_metadetect_shear_bands():
+    gaia_stars = None
+    seed = 10
+    i = 10
+    preconfig = None
+    mdet_seed = 12
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
+    )
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
+        [[0, 1, 2], [2], [1, 2]],
+    )
+    for key, d in res[0].items():
+        for sb in ["012", "2", "12"]:
+            assert np.any(d["shear_bands"] == sb)
+
+    mbobs = make_sim(
+        seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
+    )
+    res = _do_metadetect(
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+    )
+    for key, d in res[0].items():
+        for sb in ["012", "12"]:
+            assert np.any(d["shear_bands"] == sb)
+
+
 def test_get_shearband_combs():
     assert _get_shearband_combs(1) == [[0]]
     assert _get_shearband_combs(2) == [[0, 1]]
