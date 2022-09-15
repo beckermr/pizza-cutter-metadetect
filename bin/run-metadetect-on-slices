@@ -36,6 +36,7 @@ def _process(
     n_jobs,
     viz_dir,
     band_names,
+    shear_bands,
 ):
     with open(config, 'r') as fp:
         _config = yaml.load(fp.read(), Loader=yaml.Loader)
@@ -82,6 +83,14 @@ def _process(
             )
         )
 
+    if shear_bands is not None:
+        _shear_bands = [
+            [int(d) for d in sp]
+            for sp in shear_bands.strip().split(",")
+        ]
+    else:
+        _shear_bands = shear_bands
+
     def _call(output_file, mask_hs_output_file, mask_img_output_file):
         run_metadetect(
             config=_config,
@@ -101,6 +110,7 @@ def _process(
                 if band_names is not None
                 else None
             ),
+            shear_bands=_shear_bands,
         )
 
     if output_path.endswith(".fits"):
@@ -192,11 +202,21 @@ def _process(
     ),
 )
 @click.option(
+    '--shear-bands',
+    default=None,
+    type=str,
+    help=(
+        'Comma separated list of lists of band indicies to use for shear measures. '
+        'For example, to measure riz- and r-band shears for input MEDS files that are '
+        'griz, pass `--shear-bands="123,1"`.'
+    ),
+)
+@click.option(
     '--viz-dir', type=str, default=None,
     help="If set, write images of the slices to the given location.")
 def main(
     meds_files, config, output_path, seed, use_tmpdir, part, log_level,
-    meds_range, tmpdir, n_jobs, viz_dir, band_names,
+    meds_range, tmpdir, n_jobs, viz_dir, band_names, shear_bands,
 ):
     """Run metdetect on MEDS_FILES."""
 
@@ -217,6 +237,7 @@ def main(
             n_jobs=n_jobs,
             viz_dir=viz_dir,
             band_names=band_names,
+            shear_bands=shear_bands,
         )
 
     if use_tmpdir or tmpdir is not None:
