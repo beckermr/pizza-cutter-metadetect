@@ -934,7 +934,7 @@ def test_make_output_array_with_sim(band_names, nbands):
         "bmask_noshear",
         "psfrec_flags",
         "psfrec_T",
-        "wmom_gal_flags",
+        "wmom_obj_flags",
         "wmom_s2n",
         "wmom_T",
         "wmom_T_err",
