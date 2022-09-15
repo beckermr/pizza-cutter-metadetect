@@ -778,7 +778,7 @@ def test_make_output_array_with_sim(band_names, nbands):
 
     mbobs = make_sim(seed=seed, nbands=nbands, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, None,
+        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, None, None,
     )
     data = res[0][mdet_step]
 
