@@ -382,7 +382,7 @@ def test_do_metadetect_shear_bands():
     )
     res = _do_metadetect(
         CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None,
-        [[0, 1, 2], [2], [1, 2]],
+        [[0, 1, 2], [2], [1, 2]], None,
     )
     for key, d in res[0].items():
         for sb in ["012", "2", "12"]:
