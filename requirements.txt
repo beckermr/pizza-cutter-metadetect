@@ -7,7 +7,7 @@ numba
 des-easyaccess
 des-desmeds
 meds
-ngmix
+ngmix>=2.3.0
 click
 esutil
 sep
