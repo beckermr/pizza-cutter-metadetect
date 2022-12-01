@@ -7,7 +7,7 @@ numba
 des-easyaccess
 des-desmeds
 meds
-ngmix
+ngmix>=2.3.0
 click
 esutil
 sep
@@ -15,9 +15,9 @@ joblib
 jinja2
 piff
 cfitsio
-metadetect>=0.9.0
+metadetect>=0.10.0
 des-pizza-cutter
-des-sxdes
+des-sxdes>=0.3.0
 setuptools_scm
 setuptools_scm_git_archive
 importlib_metadata
