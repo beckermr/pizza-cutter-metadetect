@@ -332,7 +332,7 @@ def test_do_metadetect_pos_mfrac():
         seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6, neg_mfrac=True
     )
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
 
     for key in ['noshear', '1p', '1m', '2p', '2m']:
@@ -347,7 +347,7 @@ def test_do_metadetect_flagging():
     mdet_seed = 12
 
     res = _do_metadetect(
-        CONFIG, None, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, None, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     assert (res[3] & MASK_NOSLICE) != 0
 
@@ -356,7 +356,7 @@ def test_do_metadetect_flagging():
     )
     del mbobs[0][0]
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     assert (res[3] & MASK_MISSING_BAND) != 0
 
@@ -365,7 +365,7 @@ def test_do_metadetect_flagging():
     )
     del mbobs[-1][0]
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     assert (res[3] & MASK_MISSING_BAND) != 0
 
@@ -387,16 +387,17 @@ def test_do_metadetect_shear_bands():
     for key, d in res[0].items():
         for sb in ["012", "2", "12"]:
             assert np.any(d["shear_bands"] == sb)
+        assert np.all(d["det_bands"] == "012")
 
     mbobs = make_sim(
         seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6,
     )
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     for key, d in res[0].items():
-        for sb in ["012", "12"]:
-            assert np.any(d["shear_bands"] == sb)
+        assert np.all(d["shear_bands"] == "012")
+        assert np.all(d["det_bands"] == "012")
 
 
 @pytest.mark.parametrize("band_names,nbands", [
@@ -799,7 +800,7 @@ def test_make_output_array_with_sim(band_names, nbands):
 
     mbobs = make_sim(seed=seed, nbands=nbands, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     res = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, seed, slice_id, preconfig, None, None, None,
     )
     data = res[0][mdet_step]
 
@@ -846,10 +847,11 @@ def test_make_output_array_with_sim(band_names, nbands):
     assert_array_equal(arr['wmom_g_cov_2_2'], data['wmom_g_cov'][:, 1, 1])
 
     if nbands == 3:
-        for sb in ["012", "12"]:
-            assert np.any(arr["shear_bands"] == sb)
+        assert np.all(arr["shear_bands"] == "012")
+        assert np.all(arr["det_bands"] == "012")
     else:
         assert np.all(arr["shear_bands"] == "0")
+        assert np.all(arr["det_bands"] == "0")
 
     if band_names is None:
         band_names = ["b%d" % i for i in range(nbands)]
