@@ -606,14 +606,9 @@ def _preprocess_for_metadetect(preconfig, mbobs, gaia_stars, i, rng):
         return mbobs
 
 
-def _get_shearband_combs(nbands):
-    shear_band_combs = [list(range(nbands))]
-    if nbands > 2:
-        shear_band_combs += [list(range(nbands))[1:]]
-    return shear_band_combs
-
-
-def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, viz_dir, shear_bands):
+def _do_metadetect(
+    config, mbobs, gaia_stars, seed, i, preconfig, viz_dir, sb_combs, db_combs
+):
     _t0 = time.time()
     res = None
     flags = 0
@@ -639,10 +634,8 @@ def _do_metadetect(config, mbobs, gaia_stars, seed, i, preconfig, viz_dir, shear
                         config,
                         mbobs,
                         rng,
-                        shear_band_combs=(
-                            _get_shearband_combs(len(mbobs))
-                            if shear_bands is None else shear_bands
-                        ),
+                        shear_band_combs=sb_combs,
+                        det_band_combs=db_combs,
                     )
                 except Exception as e:
                     LOGGER.debug("metadetect failed for slice %d: %s", i, repr(e))
@@ -748,7 +741,8 @@ def run_metadetect(
     verbose=100,
     viz_dir=None,
     band_names=None,
-    shear_bands=None,
+    shear_band_combs=None,
+    det_band_combs=None,
 ):
     """Run metadetect on a "pizza slice" MEDS file and write the outputs to
     disk.
@@ -784,11 +778,15 @@ def run_metadetect(
     band_names : list of str, optional
         If given, the names of the bands as single strings to use in generating the
         output data.
-    shear_bands : list of list of int, optional
-        If given, the band indicies used to measure shear. For example, to measure riz-
-        and r-band shears for input MEDS files that are griz, pass
-        `[[1, 2, 3], [1]]`. Default of None does all bands plus all bands except the
-        first if possible.
+    shear_band_combs: list of list of int, optional
+        If given, each element of the outer list is a list of indices into mbobs to use
+        for shear measurement. Shear measurements will be made for each element of the
+        outer list. If None, then shear measurements will be made for all entries in
+        mbobs.
+    det_band_combs: list of list of int or str, optional
+        If given, the set of bands to use for detection. The default of None uses all
+        of the bands. If the string "shear_bands" is passed, the code uses the bands
+        used for shear.
     """
     t0 = time.time()
 
@@ -809,7 +807,7 @@ def run_metadetect(
         outputs = [
             _do_metadetect(
                 config, mbobs, gaia_stars, seed+i*256, i,
-                preconfig, viz_dir, shear_bands,
+                preconfig, viz_dir, shear_band_combs, det_band_combs,
             )
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
@@ -821,7 +819,7 @@ def run_metadetect(
         )(
             joblib.delayed(_do_metadetect)(
                 config, mbobs, gaia_stars, seed+i*256, i,
-                preconfig, viz_dir, shear_bands,
+                preconfig, viz_dir, shear_band_combs, det_band_combs,
             )
             for i, mbobs in meds_iter()
         )

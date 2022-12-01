@@ -253,14 +253,14 @@ def run_sim(seed, mdet_seed):
 
     mbobs = make_sim(seed=seed, nbands=3, g1=0.02, g2=0.00, ngrid=7, snr=1e6)
     _pres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     if _pres is None:
         return None
 
     mbobs = make_sim(seed=seed, nbands=3, g1=-0.02, g2=0.00, ngrid=7, snr=1e6)
     _mres = _do_metadetect(
-        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None,
+        CONFIG, mbobs, gaia_stars, mdet_seed, i, preconfig, None, None, None,
     )
     if _mres is None:
         return None
