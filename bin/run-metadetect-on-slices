@@ -200,7 +200,7 @@ def _process(
     help="If set, write images of the slices to the given location.")
 def main(
     meds_files, config, output_path, seed, use_tmpdir, part, log_level,
-    meds_range, tmpdir, n_jobs, viz_dir, band_names, shear_bands,
+    meds_range, tmpdir, n_jobs, viz_dir, band_names,
 ):
     """Run metdetect on MEDS_FILES."""
 
