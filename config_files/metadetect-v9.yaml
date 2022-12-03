@@ -33,6 +33,7 @@ meds:
   min_box_size: 48
   rad_fac: 2
   rad_min: 4
+  weight_type: uberseg
 
 pizza-cutter-preprocessing:
   gaia_star_masks:
