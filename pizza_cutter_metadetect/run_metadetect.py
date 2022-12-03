@@ -11,6 +11,7 @@ import numpy as np
 import esutil as eu
 import fitsio
 import healpy as hp
+import ngmix.prepsfmom
 
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
@@ -789,6 +790,10 @@ def run_metadetect(
         used for shear.
     """
     t0 = time.time()
+
+    # turn on caching
+    ngmix.prepsfmom.turn_on_kernel_caching()
+    ngmix.prepsfmom.turn_on_fft_caching()
 
     # process each slice in a pipeline
     if num is None:
