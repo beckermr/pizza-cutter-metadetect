@@ -11,9 +11,11 @@ fitters:
     weight:
       fwhm: 2.0
     symmetrize: False
+    coadd: False
   - model: gauss
     weight:
       fwhm: 2.0
+    symmetrize: False
     coadd: True
 
 shear_band_combs: [[1, 2, 3]]
