@@ -10,9 +10,12 @@ fitters:
   - model: pgauss
     weight:
       fwhm: 2.0
+    symmetrize: False
   - model: gauss
     weight:
       fwhm: 2.0
+    symmetrize: False
+    coadd: True
 
 shear_band_combs: [[1, 2, 3]]
 det_band_combs: [[1, 2, 3]]
