@@ -4,6 +4,7 @@ import time
 import datetime
 import logging
 import subprocess
+import gc
 
 import yaml
 import joblib
@@ -662,6 +663,8 @@ def _do_metadetect(
     else:
         LOGGER.debug("mbobs is None for entry %d", i)
         flags |= MASK_NOSLICE
+
+    gc.collect()
 
     return res, i, time.time() - _t0, flags
 
