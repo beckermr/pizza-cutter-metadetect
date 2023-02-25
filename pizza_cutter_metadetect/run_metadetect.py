@@ -11,7 +11,7 @@ import numpy as np
 import esutil as eu
 import fitsio
 import healpy as hp
-import ngmix.prepsfmom
+# import ngmix.prepsfmom
 
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
@@ -32,8 +32,8 @@ from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
 LOGGER = logging.getLogger(__name__)
 
-ngmix.prepsfmom.turn_on_kernel_caching()
-ngmix.prepsfmom.turn_on_fft_caching()
+# ngmix.prepsfmom.turn_on_kernel_caching()
+# ngmix.prepsfmom.turn_on_fft_caching()
 
 
 def split_range(meds_range):
@@ -815,18 +815,18 @@ def run_metadetect(
             )
             for i, mbobs in PBar(meds_iter(), total=num)]
     else:
-        outputs = joblib.Parallel(
+        with joblib.Parallel(
+            backend="multiprocessing",
             verbose=verbose,
             n_jobs=n_jobs,
-            pre_dispatch='2*n_jobs',
-            max_nbytes=None,  # never memmap
-        )(
-            joblib.delayed(_do_metadetect)(
-                config, mbobs, gaia_stars, seed+i*256, i,
-                preconfig, viz_dir, shear_band_combs, det_band_combs,
+        ) as exc:
+            outputs = exc(
+                joblib.delayed(_do_metadetect)(
+                    config, mbobs, gaia_stars, seed+i*256, i,
+                    preconfig, viz_dir, shear_band_combs, det_band_combs,
+                )
+                for i, mbobs in meds_iter()
             )
-            for i, mbobs in meds_iter()
-        )
 
     # join all the outputs
     meta = multiband_meds.mlist[0].get_meta()
