@@ -12,7 +12,6 @@ import numpy as np
 import esutil as eu
 import fitsio
 import healpy as hp
-# import ngmix.prepsfmom
 
 from esutil.pbar import PBar
 from metadetect.metadetect import do_metadetect
@@ -32,9 +31,6 @@ from .masks import (
 from pizza_cutter.des_pizza_cutter import get_coaddtile_geom
 
 LOGGER = logging.getLogger(__name__)
-
-# ngmix.prepsfmom.turn_on_kernel_caching()
-# ngmix.prepsfmom.turn_on_fft_caching()
 
 
 def split_range(meds_range):
